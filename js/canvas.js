@@ -6,14 +6,9 @@ let selectedId = null;
 let mode = 'select';
 let simResults = null;
 
-// Estado drag de componente
 let _drag = null;
-
-// Estado wire en progreso
 let _wireStart = null;
 let _tempWire = null;
-
-// Referencia al canvas SVG
 let _canvas = null;
 let _compLayer = null;
 let _wireLayer = null;
@@ -21,39 +16,30 @@ let _wireLayer = null;
 // ─── Inicializar canvas ───
 function initCanvas() {
   _canvas = document.getElementById('canvas');
-
-  // Capas
   _wireLayer = svgEl('g', { id: 'wire-layer' });
   _compLayer = svgEl('g', { id: 'comp-layer' });
   _canvas.appendChild(_wireLayer);
   _canvas.appendChild(_compLayer);
-
   drawGrid();
   bindCanvasEvents();
   window.addEventListener('resize', drawGrid);
 }
 
-// ─── Dibujar grid de puntos ───
+// ─── Grid ───
 function drawGrid() {
   let gl = document.getElementById('grid-layer');
   if (gl) gl.remove();
   gl = svgEl('g', { id: 'grid-layer' });
   _canvas.insertBefore(gl, _canvas.firstChild);
-
   const w = _canvas.clientWidth  || 800;
   const h = _canvas.clientHeight || 600;
-
-  for (let x = 0; x <= w; x += GRID) {
-    for (let y = 0; y <= h; y += GRID) {
+  for (let x = 0; x <= w; x += GRID)
+    for (let y = 0; y <= h; y += GRID)
       gl.appendChild(svgEl('circle', { cx: x, cy: y, r: 1.2, class: 'grid-dot' }));
-    }
-  }
 }
 
 // ─── Eventos del canvas ───
 function bindCanvasEvents() {
-
-  // Drag sobre canvas (soltar componente desde toolbar)
   _canvas.addEventListener('dragover', e => e.preventDefault());
   _canvas.addEventListener('drop', e => {
     e.preventDefault();
@@ -64,10 +50,9 @@ function bindCanvasEvents() {
     components.push(c);
     simResults = null;
     renderAll();
-    setStatus(`${c.name} añadido. Doble clic para editar valor.`);
+    setStatus(`${c.name} añadido. Doble clic para editar.`);
   });
 
-  // Click en canvas vacío
   _canvas.addEventListener('click', e => {
     if (e.target === _canvas || e.target.classList.contains('grid-dot')) {
       if (mode === 'wire' && _wireStart) {
@@ -80,7 +65,6 @@ function bindCanvasEvents() {
     }
   });
 
-  // Mouse move — arrastrar componente o previsualizar cable
   _canvas.addEventListener('mousemove', e => {
     if (_drag) {
       const pt = canvasPoint(e);
@@ -96,10 +80,8 @@ function bindCanvasEvents() {
     }
   });
 
-  // Mouse up — soltar componente
   _canvas.addEventListener('mouseup', () => { _drag = null; });
 
-  // Doble clic — abrir popup de edición
   _canvas.addEventListener('dblclick', e => {
     const gEl = e.target.closest('[data-cid]');
     if (!gEl) return;
@@ -107,33 +89,25 @@ function bindCanvasEvents() {
     e.preventDefault();
     const c = findComp(parseInt(gEl.dataset.cid));
     if (!c) return;
-    if (c.type === 'gnd') {
-      rotateComponent(c);
-      return;
-    }
     showPopup(c, e.clientX, e.clientY);
   });
 }
 
-// ─── Coordenadas relativas al canvas ───
 function canvasPoint(e) {
   const r = _canvas.getBoundingClientRect();
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 }
 
-// ─── Modo de interacción ───
+// ─── Modos ───
 function setMode(m) {
   mode = m;
   cancelWire();
   selectedId = null;
   closePopup();
-
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
   const btn = document.getElementById('btn-' + m);
   if (btn) btn.classList.add('active');
-
-  _canvas.style.cursor = m === 'wire'   ? 'crosshair'  :
-                         m === 'delete' ? 'not-allowed' : 'default';
+  _canvas.style.cursor = m === 'wire' ? 'crosshair' : m === 'delete' ? 'not-allowed' : 'default';
   renderAll();
 }
 
@@ -145,7 +119,7 @@ function renderAll() {
   components.forEach(renderComponent);
 }
 
-// ─── Renderizar un componente ───
+// ─── Renderizar componente ───
 function renderComponent(c) {
   const g = svgEl('g', {
     'data-cid': c.id,
@@ -153,7 +127,7 @@ function renderComponent(c) {
     cursor: mode === 'delete' ? 'not-allowed' : 'move'
   });
 
-  // Área de hit transparente
+  // Área hit transparente
   g.appendChild(svgEl('rect', {
     x: 0, y: 0, width: c.w, height: c.h,
     fill: 'transparent', stroke: 'none'
@@ -162,48 +136,55 @@ function renderComponent(c) {
   // Símbolo
   g.appendChild(buildSymbol(c));
 
-  // Etiqueta de valor
+  // Etiqueta valor
   if (c.type !== 'gnd') {
+    const isH = isHorizontal(c);
     const lbl = svgEl('text', {
-      'text-anchor': 'middle',
       'font-size': '10',
       'font-family': 'Consolas, monospace',
       fill: compColor(c.type),
       'font-weight': '600'
     });
     lbl.textContent = formatValue(c.value, c.type);
-    if (c.dir === 'h') {
+    const isSource = c.type === 'vs' || c.type === 'cs';
+    if (isH) {
+      // Horizontal: valor arriba centrado
+      lbl.setAttribute('text-anchor', 'middle');
       lbl.setAttribute('x', c.w / 2);
-      lbl.setAttribute('y', c.h / 2 - 24);
+      lbl.setAttribute('y', c.h / 2 - (isSource ? 28 : 24));
     } else {
-      lbl.setAttribute('x', c.w / 2 + 24);
+      // Vertical: valor a la derecha, alineado al borde derecho del círculo
+      lbl.setAttribute('text-anchor', 'start');
+      lbl.setAttribute('x', c.w / 2 + (isSource ? 26 : 16));
       lbl.setAttribute('y', c.h / 2);
       lbl.setAttribute('dominant-baseline', 'central');
     }
     g.appendChild(lbl);
   }
 
-  // Nombre del componente
+  // Nombre
   if (c.type !== 'gnd') {
-    const nameLbl = svgEl('text', {
+    const isH = isHorizontal(c);
+    const nl = svgEl('text', {
       'text-anchor': 'middle',
       'font-size': '9',
       fill: '#888',
       'font-style': 'italic'
     });
-    nameLbl.textContent = c.name;
-    if (c.dir === 'h') {
-      nameLbl.setAttribute('x', c.w / 2);
-      nameLbl.setAttribute('y', c.h / 2 + 26);
+    nl.textContent = c.name;
+    const offset = (c.type === 'vs' || c.type === 'cs') ? 32 : 26;
+    if (isH) {
+      nl.setAttribute('x', c.w / 2);
+      nl.setAttribute('y', c.h / 2 + offset);
     } else {
-      nameLbl.setAttribute('x', c.w / 2 - 26);
-      nameLbl.setAttribute('y', c.h / 2);
-      nameLbl.setAttribute('dominant-baseline', 'central');
+      nl.setAttribute('x', c.w / 2 - offset);
+      nl.setAttribute('y', c.h / 2);
+      nl.setAttribute('dominant-baseline', 'central');
     }
-    g.appendChild(nameLbl);
+    g.appendChild(nl);
   }
 
-  // Resaltado de selección
+  // Selección
   if (selectedId === c.id) {
     g.appendChild(svgEl('rect', {
       x: -5, y: -5, width: c.w + 10, height: c.h + 10,
@@ -213,7 +194,7 @@ function renderComponent(c) {
     }));
   }
 
-  // Resultados inline sobre el componente
+  // Resultados inline
   if (simResults && simResults.components[c.id]) {
     renderInlineResults(g, c, simResults.components[c.id]);
   }
@@ -233,18 +214,18 @@ function renderComponent(c) {
     g.appendChild(dot);
   });
 
-  // Eventos del grupo
   g.addEventListener('mousedown', e => {
     if (e.detail === 2) return;
     onCompMouseDown(e, c);
   });
-  g.addEventListener('click',     e => onCompClick(e, c));
+  g.addEventListener('click', e => onCompClick(e, c));
 
   _compLayer.appendChild(g);
 }
 
-// ─── Resultados inline sobre el componente ───
+// ─── Resultados inline ───
 function renderInlineResults(g, c, res) {
+  const isH = isHorizontal(c);
   const items = [];
   if (res.v !== undefined) items.push({ txt: formatResult(res.v) + 'V', col: '#E8593C' });
   if (res.i !== undefined) items.push({ txt: formatResult(res.i) + 'A', col: '#3B8BD4' });
@@ -253,13 +234,12 @@ function renderInlineResults(g, c, res) {
   items.forEach((item, i) => {
     const t = svgEl('text', {
       'text-anchor': 'middle',
-      'font-size': '9',
-      'font-weight': '700',
+      'font-size': '9', 'font-weight': '700',
       'font-family': 'Consolas, monospace',
       fill: item.col
     });
     t.textContent = item.txt;
-    if (c.dir === 'h') {
+    if (isH) {
       t.setAttribute('x', c.w / 2);
       t.setAttribute('y', c.h / 2 + 36 + i * 12);
     } else {
@@ -271,19 +251,16 @@ function renderInlineResults(g, c, res) {
   });
 }
 
-// ─── Renderizar un cable ───
+// ─── Renderizar cable ───
 function renderWire(w) {
   const line = svgEl('line', {
-    x1: w.x1, y1: w.y1,
-    x2: w.x2, y2: w.y2,
-    stroke: w.current !== undefined ? '#3B8BD4' : '#666',
+    x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2,
+    stroke: w.current !== undefined ? '#3B8BD4' : '#888',
     'stroke-width': w.current !== undefined
-      ? Math.min(4, 1.5 + Math.abs(w.current) * 0.4).toString()
-      : '2',
+      ? Math.min(4, 1.5 + Math.abs(w.current) * 0.4).toString() : '2',
     'stroke-linecap': 'round',
     cursor: mode === 'delete' ? 'not-allowed' : 'default'
   });
-
   line.addEventListener('click', () => {
     if (mode === 'delete') {
       wires = wires.filter(x => x.id !== w.id);
@@ -292,7 +269,6 @@ function renderWire(w) {
       setStatus('Cable eliminado.');
     }
   });
-
   _wireLayer.appendChild(line);
 }
 
@@ -303,15 +279,6 @@ function onCompMouseDown(e, c) {
   selectedId = c.id;
   const pt = canvasPoint(e);
   _drag = { comp: c, ox: pt.x - c.x, oy: pt.y - c.y };
-  simResults = null;
-  renderAll();
-}
-
-function rotateComponent(c) {
-  c.dir = c.dir === 'h' ? 'v' : 'h';
-  const tmp = c.w;
-  c.w = c.h;
-  c.h = tmp;
   simResults = null;
   renderAll();
 }
@@ -327,11 +294,34 @@ function onCompClick(e, c) {
   }
 }
 
+// ─── Rotar componente ───
+function rotateComponent(c) {
+  // Guardar centro exacto antes de rotar
+  const centerX = c.x + c.w / 2;
+  const centerY = c.y + c.h / 2;
+
+  const wasH = isHorizontal(c);
+  c.rot      = (c.rot + 90) % 360;
+  const nowH = isHorizontal(c);
+
+  // Intercambiar w y h al pasar entre horizontal y vertical
+  if (wasH !== nowH) {
+    const tmp = c.w;
+    c.w = c.h;
+    c.h = tmp;
+  }
+
+  // Reposicionar manteniendo el centro exacto, sin snap
+  c.x = centerX - c.w / 2;
+  c.y = centerY - c.h / 2;
+
+  simResults = null;
+  renderAll();
+}
+
 // ─── Conexión por terminal ───
 function onTerminalClick(c, termIdx, pt) {
   if (mode === 'delete') return;
-
-  // Cambiar a modo wire automáticamente
   if (mode !== 'wire') setMode('wire');
 
   if (!_wireStart) {
@@ -346,20 +336,18 @@ function onTerminalClick(c, termIdx, pt) {
     return;
   }
 
-  // No conectar al mismo componente
   if (_wireStart.compId === c.id) {
     cancelWire();
     setStatus('No se puede conectar un componente consigo mismo.');
     return;
   }
 
-  // Crear cable
   wires.push({
-    id:   nextId(),
-    x1:   _wireStart.x,   y1: _wireStart.y,
-    x2:   pt.x,           y2: pt.y,
-    c1:   _wireStart.compId, ti1: _wireStart.termIdx,
-    c2:   c.id,           ti2: termIdx
+    id: nextId(),
+    x1: _wireStart.x, y1: _wireStart.y,
+    x2: pt.x,         y2: pt.y,
+    c1: _wireStart.compId, ti1: _wireStart.termIdx,
+    c2: c.id,          ti2: termIdx
   });
 
   cancelWire();
@@ -373,7 +361,7 @@ function cancelWire() {
   _wireStart = null;
 }
 
-// ─── Limpiar circuito ───
+// ─── Limpiar ───
 function clearCircuit() {
   components = [];
   wires = [];
@@ -386,7 +374,6 @@ function clearCircuit() {
   setStatus('');
 }
 
-// ─── Utilidad ───
 function findComp(id) {
   return components.find(c => c.id === id);
 }

@@ -11,8 +11,10 @@ function showPopup(c, px, py) {
 
   document.getElementById('popup-title').textContent = typeNames[c.type] + ' — ' + c.name;
   document.getElementById('popup-lbl').textContent   = typeUnits[c.type];
-  document.getElementById('popup-val').value         = c.value;
-  document.getElementById('popup-dir').value         = c.dir;
+  // Separar valor en número base y prefijo
+  const { base, prefix } = splitValuePrefix(c.value);
+  document.getElementById('popup-val').value    = base;
+  document.getElementById('popup-prefix').value = prefix;
 
   const popup = document.getElementById('edit-popup');
   const wrap  = document.getElementById('canvas-wrap');
@@ -20,8 +22,8 @@ function showPopup(c, px, py) {
   let left    = px - wr.left + 12;
   let top     = py - wr.top  + 12;
 
-  if (left + 190 > wrap.clientWidth)  left = wrap.clientWidth  - 195;
-  if (top  + 240 > wrap.clientHeight) top  = wrap.clientHeight - 245;
+  if (left + 200 > wrap.clientWidth)  left = wrap.clientWidth  - 205;
+  if (top  + 260 > wrap.clientHeight) top  = wrap.clientHeight - 265;
   if (left < 4) left = 4;
   if (top  < 4) top  = 4;
 
@@ -34,6 +36,16 @@ function showPopup(c, px, py) {
   renderAll();
 }
 
+function rotLabel(rot) {
+  const labels = {
+    0:   '→  − izq / + der',
+    90:  '↓  − arr / + aba',
+    180: '←  + izq / − der',
+    270: '↑  + arr / − aba'
+  };
+  return labels[rot] || '→';
+}
+
 function closePopup() {
   document.getElementById('edit-popup').style.display = 'none';
   _popupId = null;
@@ -43,24 +55,24 @@ function applyPopup() {
   const c = findComp(_popupId);
   if (!c) return;
 
-  const newVal = parseFloat(document.getElementById('popup-val').value);
-  if (isNaN(newVal)) { setStatus('⚠ Valor inválido.'); return; }
+  const base   = parseFloat(document.getElementById('popup-val').value);
+  const prefix = parseFloat(document.getElementById('popup-prefix').value);
+
+  if (isNaN(base)) { setStatus('⚠ Valor inválido.'); return; }
+
+  const newVal = base * prefix;
+
   if (c.type === 'r' && newVal <= 0) { setStatus('⚠ La resistencia debe ser mayor a 0Ω.'); return; }
-  if ((c.type === 'vs' || c.type === 'cs') && newVal === 0) { setStatus('⚠ El valor de la fuente no puede ser 0.'); return; }
+  if ((c.type === 'vs' || c.type === 'cs') && newVal === 0) { setStatus('⚠ El valor no puede ser 0.'); return; }
 
   c.value = newVal;
-
-  const newDir = document.getElementById('popup-dir').value;
-  if (newDir !== c.dir) {
-    const tmp = c.w; c.w = c.h; c.h = tmp;
-    c.dir = newDir;
-  }
-
   simResults = null;
   closePopup();
   renderAll();
-  setStatus(`${c.name} actualizado — valor: ${formatValue(c.value, c.type)}`);
+  setStatus(`${c.name} actualizado — ${formatValue(c.value, c.type)}`);
 }
+
+function rotateFromPopup() {}
 
 function deleteFromPopup() {
   const c = findComp(_popupId);
@@ -120,7 +132,9 @@ function renderResults() {
   html += `<div class="res-section"><div class="res-title">Balance de potencia</div>
     <div class="res-row"><span class="res-label">Suministrada</span><span class="res-val val-p">${formatResult(pSupply)} W</span></div>
     <div class="res-row"><span class="res-label">Disipada</span><span class="res-val val-p">${formatResult(pDissip)} W</span></div>
-    <div class="res-row"><span class="res-label">Balance</span><span class="res-val" style="color:${ok ? '#3B6D11' : '#E8593C'}">${ok ? '✓ OK' : '⚠ ' + formatResult(diff) + 'W'}</span></div>
+    <div class="res-row"><span class="res-label">Balance</span>
+      <span class="res-val" style="color:${ok ? '#3B6D11' : '#E8593C'}">${ok ? '✓ OK' : '⚠ ' + formatResult(diff) + 'W'}</span>
+    </div>
   </div>`;
 
   div.innerHTML = html;
@@ -145,7 +159,18 @@ function bindUI() {
     const ok = runSimulation();
     if (ok) { renderAll(); renderResults(); setStatus('✓ Simulación completada correctamente.'); }
   });
-
+  // Botón Rotar en barra superior
+  document.getElementById('btn-rotate').addEventListener('click', () => {
+    if (selectedId === null) {
+      setStatus('⚠ Selecciona un componente primero.');
+      return;
+    }
+    const c = findComp(selectedId);
+    if (c) {
+      rotateComponent(c);
+      setStatus(`${c.name} — ${rotLabel(c.rot)}`);
+    }
+  });
   document.getElementById('btn-clear').addEventListener('click', () => {
     if (components.length === 0 && wires.length === 0) return;
     if (confirm('¿Limpiar todo el circuito?')) clearCircuit();
@@ -169,13 +194,11 @@ function bindUI() {
   // Tecla R — rotar componente seleccionado
   document.addEventListener('keydown', e => {
     if (document.getElementById('edit-popup').style.display === 'block') return;
-
     if (e.key === 'r' || e.key === 'R') {
       if (selectedId === null) return;
       const c = findComp(selectedId);
-      if (c) { rotateComponent(c); setStatus(`${c.name} rotado a ${c.dir === 'h' ? 'horizontal' : 'vertical'}.`); }
+      if (c) { rotateComponent(c); setStatus(`${c.name} — ${rotLabel(c.rot)}`); }
     }
-
     if (e.key === 'Delete') {
       if (selectedId === null) return;
       const c = findComp(selectedId);
