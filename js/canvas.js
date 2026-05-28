@@ -103,8 +103,14 @@ function bindCanvasEvents() {
   _canvas.addEventListener('dblclick', e => {
     const gEl = e.target.closest('[data-cid]');
     if (!gEl) return;
+    e.stopPropagation();
+    e.preventDefault();
     const c = findComp(parseInt(gEl.dataset.cid));
-    if (!c || c.type === 'gnd') return;
+    if (!c) return;
+    if (c.type === 'gnd') {
+      rotateComponent(c);
+      return;
+    }
     showPopup(c, e.clientX, e.clientY);
   });
 }
@@ -228,7 +234,10 @@ function renderComponent(c) {
   });
 
   // Eventos del grupo
-  g.addEventListener('mousedown', e => onCompMouseDown(e, c));
+  g.addEventListener('mousedown', e => {
+    if (e.detail === 2) return;
+    onCompMouseDown(e, c);
+  });
   g.addEventListener('click',     e => onCompClick(e, c));
 
   _compLayer.appendChild(g);
@@ -294,6 +303,15 @@ function onCompMouseDown(e, c) {
   selectedId = c.id;
   const pt = canvasPoint(e);
   _drag = { comp: c, ox: pt.x - c.x, oy: pt.y - c.y };
+  simResults = null;
+  renderAll();
+}
+
+function rotateComponent(c) {
+  c.dir = c.dir === 'h' ? 'v' : 'h';
+  const tmp = c.w;
+  c.w = c.h;
+  c.h = tmp;
   simResults = null;
   renderAll();
 }
