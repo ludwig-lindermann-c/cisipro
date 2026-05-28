@@ -156,8 +156,26 @@ function bindUI() {
   document.getElementById('btn-delete').addEventListener('click', () => setMode('delete'));
 
   document.getElementById('btn-simulate').addEventListener('click', () => {
+    stopCurrentAnimation();
     const ok = runSimulation();
-    if (ok) { renderAll(); renderResults(); setStatus('✓ Simulación completada correctamente.'); }
+    if (ok) {
+      renderAll();
+      renderResults();
+      startCurrentAnimation();
+      document.getElementById('btn-simulate').style.display = 'none';
+      document.getElementById('btn-stop').style.display = '';
+      setStatus('✓ Simulación completada correctamente.');
+    }
+  });
+
+  document.getElementById('btn-stop').addEventListener('click', () => {
+    stopCurrentAnimation();
+    simResults = null;
+    renderAll();
+    clearResults();
+    document.getElementById('btn-stop').style.display = 'none';
+    document.getElementById('btn-simulate').style.display = '';
+    setStatus('Simulación detenida.');
   });
   // Botón Rotar en barra superior
   document.getElementById('btn-rotate').addEventListener('click', () => {
@@ -173,7 +191,20 @@ function bindUI() {
   });
   document.getElementById('btn-clear').addEventListener('click', () => {
     if (components.length === 0 && wires.length === 0) return;
-    if (confirm('¿Limpiar todo el circuito?')) clearCircuit();
+    if (confirm('¿Limpiar todo el circuito?')) {
+      _saveHistory();
+      stopCurrentAnimation();
+      document.getElementById('btn-stop').style.display = 'none';
+      document.getElementById('btn-simulate').style.display = '';
+      clearCircuit();
+    }
+  });
+
+  document.getElementById('btn-undo').addEventListener('click', () => {
+    stopCurrentAnimation();
+    document.getElementById('btn-stop').style.display = 'none';
+    document.getElementById('btn-simulate').style.display = '';
+    undoLast();
   });
 
   document.getElementById('popup-ok').addEventListener('click',    applyPopup);
@@ -194,6 +225,14 @@ function bindUI() {
   // Tecla R — rotar componente seleccionado
   document.addEventListener('keydown', e => {
     if (document.getElementById('edit-popup').style.display === 'block') return;
+    // Escape — cancelar cable en construcción
+    if (e.key === 'Escape') {
+      if (_wireStart) {
+        cancelWire();
+        setStatus('Cable cancelado.');
+      }
+      return;
+    }
     if (e.key === 'r' || e.key === 'R') {
       if (selectedId === null) return;
       const c = findComp(selectedId);
@@ -203,14 +242,25 @@ function bindUI() {
       if (selectedId === null) return;
       const c = findComp(selectedId);
       if (c) {
+        _saveHistory();
         const name = c.name;
         components = components.filter(x => x.id !== c.id);
         wires      = wires.filter(w => w.c1 !== c.id && w.c2 !== c.id);
         simResults = null;
         selectedId = null;
+        stopCurrentAnimation();
         renderAll();
         setStatus(`${name} eliminado.`);
       }
+    }
+
+    // Ctrl+Z — deshacer
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      e.preventDefault();
+      stopCurrentAnimation();
+      document.getElementById('btn-stop').style.display = 'none';
+      document.getElementById('btn-simulate').style.display = '';
+      undoLast();
     }
   });
 }

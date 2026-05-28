@@ -1,6 +1,6 @@
 // ─── Definición y configuración de componentes ───
 
-const GRID = 40;
+const GRID = 20;
 
 const COMPONENT_DEFAULTS = {
   vs:  { value: 10,   name: 'V', w: 80, h: 40 },
