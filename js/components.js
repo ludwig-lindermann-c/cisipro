@@ -3,10 +3,11 @@
 const GRID = 20;
 
 const COMPONENT_DEFAULTS = {
-  vs:  { value: 10,   name: 'V', w: 80, h: 40 },
-  cs:  { value: 2,    name: 'I', w: 80, h: 40 },
-  r:   { value: 1000, name: 'R', w: 80, h: 40 },
-  gnd: { value: 0,    name: 'GND', w: 40, h: 40 }
+  vs:   { value: 10,   name: 'V',   w: 80, h: 40 },
+  cs:   { value: 2,    name: 'I',   w: 80, h: 40 },
+  r:    { value: 1000, name: 'R',   w: 80, h: 40 },
+  gnd:  { value: 0,    name: 'GND', w: 40, h: 40 },
+  node: { value: 0,    name: 'N',   w: 20, h: 20 }
 };
 
 // Rotaciones posibles en grados: 0, 90, 180, 270
@@ -27,15 +28,26 @@ function nextName(type) {
 function createComponent(type, x, y) {
   const def = COMPONENT_DEFAULTS[type];
   if (!def) return null;
+
+  // Para el nodo, centrar exactamente en el punto de grilla más cercano
+  let cx, cy;
+  if (type === 'node') {
+    cx = snapGrid(x) - 10;
+    cy = snapGrid(y) - 10;
+  } else {
+    cx = snapGrid(x - def.w / 2);
+    cy = snapGrid(y - def.h / 2);
+  }
+
   return {
     id:    nextId(),
     type,
     name:  nextName(type),
-    x:     snapGrid(x - def.w / 2),
-    y:     snapGrid(y - def.h / 2),
+    x:     cx,
+    y:     cy,
     w:     def.w,
     h:     def.h,
-    rot:   0,        // 0, 90, 180, 270
+    rot:   0,
     value: def.value
   };
 }
@@ -50,8 +62,16 @@ function getTerminals(c) {
   const cx = c.x + c.w / 2;
   const cy = c.y + c.h / 2;
 
-  // La tierra siempre conecta por arriba únicamente
+  // La tierra siempre conecta por arriba
   if (c.type === 'gnd') return [{ x: cx, y: c.y }];
+
+  // El nodo conecta en su centro en las 4 direcciones
+  if (c.type === 'node') return [
+    { x: cx, y: c.y },          // arriba
+    { x: cx, y: c.y + c.h },   // abajo
+    { x: c.x, y: cy },          // izquierda
+    { x: c.x + c.w, y: cy }    // derecha
+  ];
 
   switch (c.rot) {
     case 0:   // horizontal: izq=t0, der=t1
@@ -128,7 +148,7 @@ function formatResult(v) {
 }
 
 function compColor(type) {
-  const colors = { vs: '#E8593C', cs: '#3B8BD4', r: '#666666', gnd: '#3B6D11' };
+  const colors = { vs: '#E8593C', cs: '#3B8BD4', r: '#666666', gnd: '#3B6D11', node: '#cccccc' };
   return colors[type] || '#666666';
 }
 
@@ -137,10 +157,26 @@ function buildSymbol(c) {
   const g    = svgEl('g', {});
   const cx   = c.w / 2;
   const cy   = c.h / 2;
-  const isH  = isHorizontal(c);
+
+  // Nodo: solo un punto
+  if (c.type === 'node') {
+    g.appendChild(svgEl('circle', {
+      cx: cx, cy: cy, r: '6',
+      fill: '#cccccc', stroke: 'none'
+    }));
+    return g;
+  }
+
+  // GND no tiene símbolo rotable
+  if (c.type === 'gnd') {
+    _drawSymbol(g, c.type, c.w, c.h);
+    return g;
+  }
+
+  const isH   = isHorizontal(c);
   const drawW = isH ? c.w : c.h;
   const drawH = isH ? c.h : c.w;
-  const sym  = svgEl('g', {});
+  const sym   = svgEl('g', {});
 
   _drawSymbol(sym, c.type, drawW, drawH);
 

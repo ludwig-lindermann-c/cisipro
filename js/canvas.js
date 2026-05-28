@@ -37,7 +37,6 @@ function undoLast() {
   wires      = snapshot.wires;
   junctions  = snapshot.junctions;
   simResults = null;
-  stopCurrentAnimation();
   renderAll();
   clearResults();
   setStatus('Acción deshecha.');
@@ -68,6 +67,19 @@ function drawGrid() {
       gl.appendChild(svgEl('circle', { cx: x, cy: y, r: 1.2, class: 'grid-dot' }));
 }
 
+// ─── Snap al nodo más cercano ───
+function _snapToNearestNode(x, y) {
+  for (const c of components) {
+    if (c.type !== 'node') continue;
+    const cx = c.x + c.w / 2;
+    const cy = c.y + c.h / 2;
+    if (Math.abs(x - cx) < 30 && Math.abs(y - cy) < 30) {
+      return { x: cx, y: cy, nodeComp: c };
+    }
+  }
+  return null;
+}
+
 // ─── Eventos del canvas ───
 function bindCanvasEvents() {
   _canvas.addEventListener('dragover', e => e.preventDefault());
@@ -91,29 +103,34 @@ function bindCanvasEvents() {
     // Clic sobre un cable en modo wire — crear junction
     if (mode === 'wire' && _wireStart && !onCanvas) {
       const pt  = canvasPoint(e);
+
+      // Verificar si hay un nodo cerca
+      const nearNode = _snapToNearestNode(pt.x, pt.y);
+      if (nearNode) {
+        _finishWireToPoint(nearNode.x, nearNode.y, nearNode.nodeComp, 0);
+        return;
+      }
+
       const hit = _wireAtPoint(pt.x, pt.y);
       if (hit) {
         _saveHistory();
         const snapped = _snapToWire(hit, pt.x, pt.y);
         _splitWire(hit, snapped.x, snapped.y);
-
         const allPoints = [
           { x: _wireStart.x, y: _wireStart.y },
           ..._wirePoints,
           { x: snapped.x, y: snapped.y }
         ];
-
         for (let i = 0; i < allPoints.length - 1; i++) {
           wires.push({
-            id:  nextId(),
-            x1:  allPoints[i].x,   y1: allPoints[i].y,
-            x2:  allPoints[i+1].x, y2: allPoints[i+1].y,
-            c1:  i === 0 ? _wireStart.compId : null,
+            id: nextId(),
+            x1: allPoints[i].x,   y1: allPoints[i].y,
+            x2: allPoints[i+1].x, y2: allPoints[i+1].y,
+            c1: i === 0 ? _wireStart.compId : null,
             ti1: i === 0 ? _wireStart.termIdx : null,
-            c2:  null, ti2: null
+            c2: null, ti2: null
           });
         }
-
         cancelWire();
         simResults = null;
         renderAll();
@@ -122,9 +139,17 @@ function bindCanvasEvents() {
       }
     }
 
-    // Clic en canvas vacío en modo wire — agregar punto de quiebre
+    // Clic en canvas vacío en modo wire — agregar punto de quiebre o conectar a nodo
     if (mode === 'wire' && _wireStart && onCanvas) {
-      const pt   = canvasPoint(e);
+      const pt = canvasPoint(e);
+
+      // Verificar si hay un nodo cerca
+      const nearNode = _snapToNearestNode(pt.x, pt.y);
+      if (nearNode) {
+        _finishWireToPoint(nearNode.x, nearNode.y, nearNode.nodeComp, 0);
+        return;
+      }
+
       const last = _wirePoints.length > 0
         ? _wirePoints[_wirePoints.length - 1]
         : { x: _wireStart.x, y: _wireStart.y };
@@ -163,8 +188,15 @@ function bindCanvasEvents() {
   _canvas.addEventListener('mousemove', e => {
     if (_drag) {
       const pt = canvasPoint(e);
-      _drag.comp.x = snapGrid(pt.x - _drag.ox);
-      _drag.comp.y = snapGrid(pt.y - _drag.oy);
+      if (_drag.isNode) {
+        const cx = snapGrid(pt.x);
+        const cy = snapGrid(pt.y);
+        _drag.comp.x = cx - _drag.comp.w / 2;
+        _drag.comp.y = cy - _drag.comp.h / 2;
+      } else {
+        _drag.comp.x = snapGrid(pt.x - _drag.ox);
+        _drag.comp.y = snapGrid(pt.y - _drag.oy);
+      }
       renderAll();
       return;
     }
@@ -197,6 +229,38 @@ function bindCanvasEvents() {
 function canvasPoint(e) {
   const r = _canvas.getBoundingClientRect();
   return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+// ─── Terminar cable en un punto específico ───
+function _finishWireToPoint(x, y, comp, termIdx) {
+  const allPoints = [
+    { x: _wireStart.x, y: _wireStart.y },
+    ..._wirePoints,
+    { x, y }
+  ];
+
+  _saveHistory();
+  for (let i = 0; i < allPoints.length - 1; i++) {
+    const x1 = allPoints[i].x,   y1 = allPoints[i].y;
+    const x2 = allPoints[i+1].x, y2 = allPoints[i+1].y;
+
+    // Ignorar cables de longitud cero
+    if (x1 === x2 && y1 === y2) continue;
+
+    wires.push({
+      id:  nextId(),
+      x1, y1, x2, y2,
+      c1:  i === 0 ? _wireStart.compId : null,
+      ti1: i === 0 ? _wireStart.termIdx : null,
+      c2:  i === allPoints.length - 2 ? comp.id : null,
+      ti2: i === allPoints.length - 2 ? termIdx : null
+    });
+  }
+
+  cancelWire();
+  simResults = null;
+  renderAll();
+  setStatus('¡Conexión realizada! Presiona Simular para analizar.');
 }
 
 // ─── Modos ───
@@ -236,8 +300,9 @@ function renderComponent(c) {
 
   g.appendChild(buildSymbol(c));
 
-  if (c.type !== 'gnd') {
+  if (c.type !== 'gnd' && c.type !== 'node') {
     const isH = isHorizontal(c);
+    const isSource = c.type === 'vs' || c.type === 'cs';
     const lbl = svgEl('text', {
       'font-size': '10',
       'font-family': 'Consolas, monospace',
@@ -245,7 +310,6 @@ function renderComponent(c) {
       'font-weight': '600'
     });
     lbl.textContent = formatValue(c.value, c.type);
-    const isSource = c.type === 'vs' || c.type === 'cs';
     if (isH) {
       lbl.setAttribute('text-anchor', 'middle');
       lbl.setAttribute('x', c.w / 2);
@@ -259,8 +323,9 @@ function renderComponent(c) {
     g.appendChild(lbl);
   }
 
-  if (c.type !== 'gnd') {
+  if (c.type !== 'gnd' && c.type !== 'node') {
     const isH = isHorizontal(c);
+    const isSource = c.type === 'vs' || c.type === 'cs';
     const nl = svgEl('text', {
       'text-anchor': 'middle',
       'font-size': '9',
@@ -268,7 +333,7 @@ function renderComponent(c) {
       'font-style': 'italic'
     });
     nl.textContent = c.name;
-    const offset = (c.type === 'vs' || c.type === 'cs') ? 32 : 26;
+    const offset = isSource ? 32 : 26;
     if (isH) {
       nl.setAttribute('x', c.w / 2);
       nl.setAttribute('y', c.h / 2 + offset);
@@ -289,39 +354,57 @@ function renderComponent(c) {
     }));
   }
 
-  if (simResults && simResults.components[c.id]) {
-    renderInlineResults(g, c, simResults.components[c.id]);
-  }
-
-  getTerminals(c).forEach((pt, idx) => {
-    const dot = svgEl('circle', {
-      cx: pt.x - c.x, cy: pt.y - c.y,
-      r: 4, fill: 'white',
-      stroke: compColor(c.type), 'stroke-width': '1.8',
+  // Terminales
+  if (c.type === 'node') {
+    const hitArea = svgEl('circle', {
+      cx: c.w / 2, cy: c.h / 2, r: 10,
+      fill: 'transparent', stroke: 'none',
       cursor: 'crosshair'
     });
-    dot.addEventListener('mousedown', e => {
+    hitArea.addEventListener('mousedown', e => {
       e.stopPropagation();
-      onTerminalClick(c, idx, pt);
+      const ncx = c.x + c.w / 2;
+      const ncy = c.y + c.h / 2;
+      onTerminalClick(c, 0, { x: ncx, y: ncy });
     });
-    g.appendChild(dot);
-  });
+    g.appendChild(hitArea);
+  } else {
+    getTerminals(c).forEach((pt, idx) => {
+      const dot = svgEl('circle', {
+        cx: pt.x - c.x, cy: pt.y - c.y,
+        r: 4, fill: 'white',
+        stroke: compColor(c.type), 'stroke-width': '1.8',
+        cursor: 'crosshair'
+      });
+      dot.addEventListener('mousedown', e => {
+        e.stopPropagation();
+        onTerminalClick(c, idx, pt);
+      });
+      g.appendChild(dot);
+    });
+  }
 
   g.addEventListener('mousedown', e => {
     if (e.detail === 2) return;
     onCompMouseDown(e, c);
   });
   g.addEventListener('click', e => onCompClick(e, c));
-
   _compLayer.appendChild(g);
 }
 
 function renderInlineResults(g, c, res) {}
 
+// ─── Renderizar cable ───
 function renderWire(w) {
+  let color = '#888';
+  if (simResults && simResults.wireVoltage) {
+    const v    = simResults.wireVoltage[w.id];
+    const vMax = simResults.vMax || 1;
+    if (v !== undefined) color = _voltageColor(v, vMax);
+  }
   const line = svgEl('line', {
     x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2,
-    stroke: '#888', 'stroke-width': '2',
+    stroke: color, 'stroke-width': '2.5',
     'stroke-linecap': 'round',
     cursor: mode === 'delete' ? 'not-allowed' : 'default'
   });
@@ -330,12 +413,20 @@ function renderWire(w) {
       _saveHistory();
       wires = wires.filter(x => x.id !== w.id);
       simResults = null;
-      stopCurrentAnimation();
       renderAll();
       setStatus('Cable eliminado.');
     }
   });
   _wireLayer.appendChild(line);
+}
+
+function _voltageColor(v, vMax) {
+  if (vMax === 0) return '#888';
+  const t = Math.max(0, Math.min(1, v / vMax));
+  const r = Math.round(59  + (232 - 59)  * t);
+  const g = Math.round(139 + (89  - 139) * t);
+  const b = Math.round(212 + (60  - 212) * t);
+  return `rgb(${r},${g},${b})`;
 }
 
 function renderJunction(j) {
@@ -346,12 +437,17 @@ function renderJunction(j) {
   _wireLayer.appendChild(dot);
 }
 
+// ─── Eventos de componente ───
 function onCompMouseDown(e, c) {
   if (mode !== 'select') return;
   e.stopPropagation();
   selectedId = c.id;
   const pt = canvasPoint(e);
-  _drag = { comp: c, ox: pt.x - c.x, oy: pt.y - c.y };
+  if (c.type === 'node') {
+    _drag = { comp: c, ox: c.w / 2, oy: c.h / 2, isNode: true };
+  } else {
+    _drag = { comp: c, ox: pt.x - c.x, oy: pt.y - c.y };
+  }
   simResults = null;
   renderAll();
 }
@@ -369,21 +465,21 @@ function onCompClick(e, c) {
 }
 
 function rotateComponent(c) {
-  if (c.type === 'gnd') { setStatus('La tierra no necesita rotación.'); return; }
+  if (c.type === 'gnd')  { setStatus('La tierra no necesita rotación.'); return; }
+  if (c.type === 'node') { setStatus('El nodo no necesita rotación.'); return; }
   const centerX = c.x + c.w / 2;
   const centerY = c.y + c.h / 2;
   const wasH = isHorizontal(c);
   c.rot = (c.rot + 90) % 360;
   const nowH = isHorizontal(c);
-  if (wasH !== nowH) {
-    const tmp = c.w; c.w = c.h; c.h = tmp;
-  }
+  if (wasH !== nowH) { const tmp = c.w; c.w = c.h; c.h = tmp; }
   c.x = centerX - c.w / 2;
   c.y = centerY - c.h / 2;
   simResults = null;
   renderAll();
 }
 
+// ─── Conexión por terminal ───
 function onTerminalClick(c, termIdx, pt) {
   if (mode === 'delete') return;
   if (mode !== 'wire') setMode('wire');
@@ -392,7 +488,8 @@ function onTerminalClick(c, termIdx, pt) {
     _wireStart = { compId: c.id, termIdx, x: snapGrid(pt.x), y: snapGrid(pt.y) };
     _wirePoints = [];
     _tempWire = svgEl('line', {
-      x1: snapGrid(pt.x), y1: snapGrid(pt.y), x2: snapGrid(pt.x), y2: snapGrid(pt.y),
+      x1: snapGrid(pt.x), y1: snapGrid(pt.y),
+      x2: snapGrid(pt.x), y2: snapGrid(pt.y),
       stroke: '#3B8BD4', 'stroke-width': '1.5',
       'stroke-dasharray': '6 3', opacity: '0.8'
     });
@@ -407,34 +504,7 @@ function onTerminalClick(c, termIdx, pt) {
     return;
   }
 
-  const allPoints = [
-    { x: _wireStart.x, y: _wireStart.y },
-    ..._wirePoints,
-    { x: pt.x, y: pt.y }
-  ];
-
-  for (let p = 1; p < allPoints.length - 1; p++) {
-    const hit = _wireAtPoint(allPoints[p].x, allPoints[p].y);
-    if (hit) _splitWire(hit, allPoints[p].x, allPoints[p].y);
-  }
-
-  _saveHistory();
-  for (let i = 0; i < allPoints.length - 1; i++) {
-    wires.push({
-      id:  nextId(),
-      x1:  allPoints[i].x,   y1: allPoints[i].y,
-      x2:  allPoints[i+1].x, y2: allPoints[i+1].y,
-      c1:  i === 0 ? _wireStart.compId : null,
-      ti1: i === 0 ? _wireStart.termIdx : null,
-      c2:  i === allPoints.length - 2 ? c.id : null,
-      ti2: i === allPoints.length - 2 ? termIdx : null
-    });
-  }
-
-  cancelWire();
-  simResults = null;
-  renderAll();
-  setStatus('¡Conexión realizada! Presiona Simular para analizar.');
+  _finishWireToPoint(pt.x, pt.y, c, termIdx);
 }
 
 function cancelWire() {
@@ -463,30 +533,21 @@ function findComp(id) {
 }
 
 function snapAngle(from, to) {
-  // Primero snap al grid
-  const toSnapped = {
-    x: snapGrid(to.x),
-    y: snapGrid(to.y)
-  };
-
+  const toSnapped = { x: snapGrid(to.x), y: snapGrid(to.y) };
   const dx  = toSnapped.x - from.x;
   const dy  = toSnapped.y - from.y;
   const len = Math.sqrt(dx * dx + dy * dy);
   if (len < 1) return { x: from.x, y: from.y };
-
-  // Luego snap al ángulo más cercano (0, 45, 90, 135...)
   const angle  = Math.atan2(dy, dx);
   const snap45 = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
-
   return {
     x: snapGrid(from.x + len * Math.cos(snap45)),
     y: snapGrid(from.y + len * Math.sin(snap45))
   };
 }
 
-// ─── Animación de corriente ───
-let _animFrame = null;
-let _animParticles = [];
+function startCurrentAnimation() { renderAll(); }
+function stopCurrentAnimation()  { renderAll(); }
 
 function _wireAtPoint(x, y) {
   for (const w of wires) {
@@ -513,8 +574,8 @@ function _snapToWire(w, px, py) {
   const t = ((px - w.x1) * dx + (py - w.y1) * dy) / len2;
   const tc = Math.max(0.05, Math.min(0.95, t));
   return {
-    x: Math.round(w.x1 + tc * dx),
-    y: Math.round(w.y1 + tc * dy)
+    x: snapGrid(w.x1 + tc * dx),
+    y: snapGrid(w.y1 + tc * dy)
   };
 }
 

@@ -11,7 +11,7 @@ function showPopup(c, px, py) {
 
   document.getElementById('popup-title').textContent = typeNames[c.type] + ' — ' + c.name;
   document.getElementById('popup-lbl').textContent   = typeUnits[c.type];
-  // Separar valor en número base y prefijo
+
   const { base, prefix } = splitValuePrefix(c.value);
   document.getElementById('popup-val').value    = base;
   document.getElementById('popup-prefix').value = prefix;
@@ -78,6 +78,7 @@ function deleteFromPopup() {
   const c = findComp(_popupId);
   if (!c) return;
   const name = c.name;
+  _saveHistory();
   components = components.filter(x => x.id !== c.id);
   wires      = wires.filter(w => w.c1 !== c.id && w.c2 !== c.id);
   simResults = null;
@@ -156,12 +157,10 @@ function bindUI() {
   document.getElementById('btn-delete').addEventListener('click', () => setMode('delete'));
 
   document.getElementById('btn-simulate').addEventListener('click', () => {
-    stopCurrentAnimation();
     const ok = runSimulation();
     if (ok) {
       renderAll();
       renderResults();
-      startCurrentAnimation();
       document.getElementById('btn-simulate').style.display = 'none';
       document.getElementById('btn-stop').style.display = '';
       setStatus('✓ Simulación completada correctamente.');
@@ -169,7 +168,6 @@ function bindUI() {
   });
 
   document.getElementById('btn-stop').addEventListener('click', () => {
-    stopCurrentAnimation();
     simResults = null;
     renderAll();
     clearResults();
@@ -177,34 +175,27 @@ function bindUI() {
     document.getElementById('btn-simulate').style.display = '';
     setStatus('Simulación detenida.');
   });
-  // Botón Rotar en barra superior
+
   document.getElementById('btn-rotate').addEventListener('click', () => {
-    if (selectedId === null) {
-      setStatus('⚠ Selecciona un componente primero.');
-      return;
-    }
+    if (selectedId === null) { setStatus('⚠ Selecciona un componente primero.'); return; }
     const c = findComp(selectedId);
-    if (c) {
-      rotateComponent(c);
-      setStatus(`${c.name} — ${rotLabel(c.rot)}`);
-    }
+    if (c) { rotateComponent(c); setStatus(`${c.name} — ${rotLabel(c.rot)}`); }
   });
+
+  document.getElementById('btn-undo').addEventListener('click', () => {
+    document.getElementById('btn-stop').style.display = 'none';
+    document.getElementById('btn-simulate').style.display = '';
+    undoLast();
+  });
+
   document.getElementById('btn-clear').addEventListener('click', () => {
     if (components.length === 0 && wires.length === 0) return;
     if (confirm('¿Limpiar todo el circuito?')) {
       _saveHistory();
-      stopCurrentAnimation();
       document.getElementById('btn-stop').style.display = 'none';
       document.getElementById('btn-simulate').style.display = '';
       clearCircuit();
     }
-  });
-
-  document.getElementById('btn-undo').addEventListener('click', () => {
-    stopCurrentAnimation();
-    document.getElementById('btn-stop').style.display = 'none';
-    document.getElementById('btn-simulate').style.display = '';
-    undoLast();
   });
 
   document.getElementById('popup-ok').addEventListener('click',    applyPopup);
@@ -222,22 +213,20 @@ function bindUI() {
     });
   });
 
-  // Tecla R — rotar componente seleccionado
   document.addEventListener('keydown', e => {
     if (document.getElementById('edit-popup').style.display === 'block') return;
-    // Escape — cancelar cable en construcción
+
     if (e.key === 'Escape') {
-      if (_wireStart) {
-        cancelWire();
-        setStatus('Cable cancelado.');
-      }
+      if (_wireStart) { cancelWire(); setStatus('Cable cancelado.'); }
       return;
     }
+
     if (e.key === 'r' || e.key === 'R') {
       if (selectedId === null) return;
       const c = findComp(selectedId);
       if (c) { rotateComponent(c); setStatus(`${c.name} — ${rotLabel(c.rot)}`); }
     }
+
     if (e.key === 'Delete') {
       if (selectedId === null) return;
       const c = findComp(selectedId);
@@ -248,16 +237,13 @@ function bindUI() {
         wires      = wires.filter(w => w.c1 !== c.id && w.c2 !== c.id);
         simResults = null;
         selectedId = null;
-        stopCurrentAnimation();
         renderAll();
         setStatus(`${name} eliminado.`);
       }
     }
 
-    // Ctrl+Z — deshacer
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
       e.preventDefault();
-      stopCurrentAnimation();
       document.getElementById('btn-stop').style.display = 'none';
       document.getElementById('btn-simulate').style.display = '';
       undoLast();

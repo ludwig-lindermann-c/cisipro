@@ -40,6 +40,19 @@ function _mna() {
     pts.forEach((_, i) => { termId[`${c.id}-${i}`] = tid++; });
   }
 
+  // Fusionar todos los terminales del nodo en uno solo
+  for (const c of components) {
+    if (c.type !== 'node') continue;
+    const pts = getTerminals(c);
+    for (let i = 1; i < pts.length; i++) {
+      const a = termId[`${c.id}-0`];
+      const b = termId[`${c.id}-${i}`];
+      if (a !== undefined && b !== undefined) {
+        termId[`${c.id}-${i}`] = a;
+      }
+    }
+  }
+
   // ── Paso 2: union-find ──
   const parent = Array.from({ length: tid }, (_, i) => i);
 
@@ -93,7 +106,7 @@ function _mna() {
       ];
       for (const p1 of pts) {
         for (const p2 of pts2) {
-          if (Math.abs(p1.xa - p2.xb) < 2 && Math.abs(p1.ya - p2.yb) < 2) {
+          if (Math.abs(p1.xa - p2.xb) < 4 && Math.abs(p1.ya - p2.yb) < 4) {
             unite(wireNodeId[p1.ka], wireNodeId[p2.kb]);
           }
         }
@@ -101,42 +114,53 @@ function _mna() {
     }
   }
 
-// Conectar cables que pasan por un junction
+  // Conectar cables que pasan por un junction
   for (const j of junctions) {
     const jKey = `junction-${j.id}`;
     const jnid = wnid++;
     parent.push(jnid);
     wireNodeId[jKey] = jnid;
+    for (const w of wires) {
+      const keyA = `wire-${w.id}-a`;
+      const keyB = `wire-${w.id}-b`;
+      if (Math.abs(w.x1 - j.x) < 4 && Math.abs(w.y1 - j.y) < 4)
+        unite(wireNodeId[keyA], wireNodeId[jKey]);
+      if (Math.abs(w.x2 - j.x) < 4 && Math.abs(w.y2 - j.y) < 4)
+        unite(wireNodeId[keyB], wireNodeId[jKey]);
+    }
+  }
+
+  // Conectar nodos con todos los cables que pasen por su centro
+  for (const c of components) {
+    if (c.type !== 'node') continue;
+    const cx = c.x + c.w / 2;
+    const cy = c.y + c.h / 2;
+    const nodeTid = termId[`${c.id}-0`];
+    if (nodeTid === undefined) continue;
 
     for (const w of wires) {
       const keyA = `wire-${w.id}-a`;
       const keyB = `wire-${w.id}-b`;
-      if (Math.abs(w.x1 - j.x) < 4 && Math.abs(w.y1 - j.y) < 4) {
-        unite(wireNodeId[keyA], wireNodeId[jKey]);
-      }
-      if (Math.abs(w.x2 - j.x) < 4 && Math.abs(w.y2 - j.y) < 4) {
-        unite(wireNodeId[keyB], wireNodeId[jKey]);
-      }
-    }
-  }
 
-  // Conectar también cables que comparten punto físico con el junction
-  // aunque no estén registrados explícitamente
-  for (let i = 0; i < wires.length; i++) {
-    for (let j = i + 1; j < wires.length; j++) {
-      const wi = wires[i];
-      const wj = wires[j];
-      const endPoints = [
-        { key: `wire-${wi.id}-a`, x: wi.x1, y: wi.y1 },
-        { key: `wire-${wi.id}-b`, x: wi.x2, y: wi.y2 },
-        { key: `wire-${wj.id}-a`, x: wj.x1, y: wj.y1 },
-        { key: `wire-${wj.id}-b`, x: wj.x2, y: wj.y2 }
-      ];
-      // Si extremo de wi coincide con extremo de wj
-      for (const ei of endPoints.slice(0,2)) {
-        for (const ej of endPoints.slice(2,4)) {
-          if (Math.abs(ei.x - ej.x) < 4 && Math.abs(ei.y - ej.y) < 4) {
-            unite(wireNodeId[ei.key], wireNodeId[ej.key]);
+      const a_near = Math.abs(w.x1 - cx) < 25 && Math.abs(w.y1 - cy) < 25;
+      const b_near = Math.abs(w.x2 - cx) < 25 && Math.abs(w.y2 - cy) < 25;
+
+      if (a_near) unite(nodeTid, wireNodeId[keyA]);
+      if (b_near) unite(nodeTid, wireNodeId[keyB]);
+
+      if (!a_near && !b_near) {
+        const dx   = w.x2 - w.x1;
+        const dy   = w.y2 - w.y1;
+        const len2 = dx * dx + dy * dy;
+        if (len2 > 0) {
+          const t  = ((cx - w.x1) * dx + (cy - w.y1) * dy) / len2;
+          if (t >= 0 && t <= 1) {
+            const px = w.x1 + t * dx;
+            const py = w.y1 + t * dy;
+            if (Math.abs(px - cx) < 25 && Math.abs(py - cy) < 25) {
+              unite(nodeTid, wireNodeId[keyA]);
+              unite(nodeTid, wireNodeId[keyB]);
+            }
           }
         }
       }
@@ -188,10 +212,7 @@ function _mna() {
   // Estampar resistencias
   for (const c of components) {
     if (c.type !== 'r') continue;
-    if (c.value === 0) {
-      setStatus(`⚠ ${c.name} tiene valor 0Ω.`);
-      return null;
-    }
+    if (c.value === 0) { setStatus(`⚠ ${c.name} tiene valor 0Ω.`); return null; }
     const G  = 1 / c.value;
     const n1 = nodeOf(c.id, 0);
     const n2 = nodeOf(c.id, 1);
@@ -233,7 +254,7 @@ function _mna() {
   // ── Paso 8: V, I, P por componente ──
   const compData = {};
   for (const c of components) {
-    if (c.type === 'gnd') continue;
+    if (c.type === 'gnd' || c.type === 'node') continue;
     const n1 = nodeOf(c.id, 0);
     const n2 = nodeOf(c.id, 1);
     const v1 = V[n1] ?? 0;
@@ -253,56 +274,43 @@ function _mna() {
     }
   }
 
-  // ── Paso 9: calcular corriente real por cable ──
-  const wireCurrent = {};
+  // ── Paso 9: tensión promedio por cable ──
+  const wireVoltage = {};
+  let vMax = 0;
+
   for (const w of wires) {
-    const nA = nodeMap[find(wireNodeId[`wire-${w.id}-a`])] ?? 0;
-    const nB = nodeMap[find(wireNodeId[`wire-${w.id}-b`])] ?? 0;
-    const vA = V[nA] ?? 0;
-    const vB = V[nB] ?? 0;
-
-    // Buscar resistencia conectada a este cable para calcular I=V/R
-    let current = null;
-
-    if (w.c1 !== null) {
-      const comp = components.find(c => c.id === w.c1);
-      if (comp && compData[comp.id]) {
-        current = w.ti1 === 1
-          ? compData[comp.id].i
-          : -compData[comp.id].i;
-      }
-    }
-    if (current === null && w.c2 !== null) {
-      const comp = components.find(c => c.id === w.c2);
-      if (comp && compData[comp.id]) {
-        current = w.ti2 === 1
-          ? -compData[comp.id].i
-          : compData[comp.id].i;
-      }
-    }
-
-    // Si no tiene componente directo, usar diferencia de tensión
-    // y buscar resistencia equivalente del nodo
-    if (current === null && Math.abs(vA - vB) > 1e-9) {
-      // Buscar corriente total que sale del nodo de mayor tensión
-      const highNode = vA > vB ? nA : nB;
-      let totalI = 0;
-      for (const c of components) {
-        const r = compData[c.id];
-        if (!r) continue;
-        const cn1 = nodeOf(c.id, 0);
-        const cn2 = nodeOf(c.id, 1);
-        if (cn1 === highNode || cn2 === highNode) {
-          totalI += Math.abs(r.i);
-        }
-      }
-      current = vA > vB ? totalI : -totalI;
-    }
-
-    wireCurrent[w.id] = current ?? 0;
+    const nA  = nodeMap[find(wireNodeId[`wire-${w.id}-a`])] ?? 0;
+    const nB  = nodeMap[find(wireNodeId[`wire-${w.id}-b`])] ?? 0;
+    const vA  = V[nA] ?? 0;
+    const vB  = V[nB] ?? 0;
+    const avg = (Math.abs(vA) + Math.abs(vB)) / 2;
+    wireVoltage[w.id] = avg;
+    if (avg > vMax) vMax = avg;
   }
 
-  return { nodes: V, nodeCount, components: compData, nodeOf, wireCurrent };
+  return { nodes: V, nodeCount, components: compData, nodeOf, wireVoltage, vMax };
+}
+
+function _pointOnSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1) return false;
+  const t = ((px - x1) * dx + (py - y1) * dy) / len2;
+  if (t < 0.05 || t > 0.95) return false;
+  const cx = x1 + t * dx;
+  const cy = y1 + t * dy;
+  return Math.abs(cx - px) < 6 && Math.abs(cy - py) < 6;
+}
+
+function _pointOnSegmentTol(px, py, x1, y1, x2, y2, tol) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1) return false;
+  const t = ((px - x1) * dx + (py - y1) * dy) / len2;
+  if (t < 0.05 || t > 0.95) return false;
+  const cx = x1 + t * dx;
+  const cy = y1 + t * dy;
+  return Math.abs(cx - px) < tol && Math.abs(cy - py) < tol;
 }
 
 function _gaussElimination(A, b) {
