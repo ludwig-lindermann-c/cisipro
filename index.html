@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CiSIPro — Circuit Simulator</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
+</head>
+<body>
+
+  <div id="app">
+
+    <!-- Barra superior -->
+    <header id="topbar">
+      <div id="logo">
+        <span class="logo-ci">CiSI</span><span class="logo-pro">Pro</span>
+      </div>
+      <div id="mode-bar">
+        <button class="mode-btn active" id="btn-select" title="Seleccionar / mover">
+          <i class="ti ti-cursor-text"></i> Seleccionar
+        </button>
+        <button class="mode-btn" id="btn-wire" title="Conectar terminales">
+          <i class="ti ti-line"></i> Conectar
+        </button>
+        <button class="mode-btn" id="btn-delete" title="Borrar elemento">
+          <i class="ti ti-trash"></i> Borrar
+        </button>
+      </div>
+      <div id="top-actions">
+        <button class="action-btn" id="btn-simulate">
+          <i class="ti ti-player-play"></i> Simular
+        </button>
+        <button class="action-btn secondary" id="btn-clear">
+          <i class="ti ti-refresh"></i> Limpiar
+        </button>
+      </div>
+    </header>
+
+    <!-- Cuerpo principal -->
+    <div id="main">
+
+      <!-- Toolbar de componentes -->
+      <aside id="toolbar">
+        <div class="tool-section">
+          <h3 class="tool-heading">Fuentes</h3>
+          <div class="tool-btn" draggable="true" data-type="vs" title="Fuente de voltaje DC">
+            <svg viewBox="0 0 28 22"><circle cx="14" cy="11" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><text x="11" y="10" font-size="8" font-weight="700" fill="#E8593C">+</text><text x="15" y="15" font-size="8" font-weight="700" fill="#3B8BD4">−</text></svg>
+            <span>V fuente</span>
+          </div>
+          <div class="tool-btn" draggable="true" data-type="cs" title="Fuente de corriente DC">
+            <svg viewBox="0 0 28 22"><circle cx="14" cy="11" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><line x1="14" y1="5" x2="14" y2="17" stroke="#3B8BD4" stroke-width="1.8"/><polygon points="10,13 14,18 18,13" fill="#3B8BD4"/></svg>
+            <span>I fuente</span>
+          </div>
+        </div>
+
+        <div class="tool-section">
+          <h3 class="tool-heading">Pasivos</h3>
+          <div class="tool-btn" draggable="true" data-type="r" title="Resistencia">
+            <svg viewBox="0 0 28 22"><line x1="1" y1="11" x2="6" y2="11" stroke="currentColor" stroke-width="1.8"/><rect x="6" y="5" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><line x1="22" y1="11" x2="27" y2="11" stroke="currentColor" stroke-width="1.8"/></svg>
+            <span>Resistor</span>
+          </div>
+        </div>
+
+        <div class="tool-section">
+          <h3 class="tool-heading">Utilidades</h3>
+          <div class="tool-btn" draggable="true" data-type="gnd" title="Referencia tierra">
+            <svg viewBox="0 0 28 22"><line x1="14" y1="1" x2="14" y2="10" stroke="currentColor" stroke-width="1.8"/><line x1="5" y1="10" x2="23" y2="10" stroke="currentColor" stroke-width="2.2"/><line x1="8" y1="14" x2="20" y2="14" stroke="currentColor" stroke-width="1.6"/><line x1="11" y1="18" x2="17" y2="18" stroke="currentColor" stroke-width="1.2"/></svg>
+            <span>Tierra</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Canvas SVG -->
+      <div id="canvas-wrap">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+        <!-- Popup de edición -->
+        <div id="edit-popup">
+          <h4 id="popup-title">Componente</h4>
+          <label id="popup-lbl">Valor</label>
+          <input id="popup-val" type="number" step="any" />
+          <div id="popup-dir-row">
+            <label>Orientación</label>
+            <select id="popup-dir">
+              <option value="h">Horizontal</option>
+              <option value="v">Vertical</option>
+            </select>
+          </div>
+          <div class="popup-row">
+            <button class="popup-btn" id="popup-ok">Aplicar</button>
+            <button class="popup-btn danger" id="popup-del">Borrar</button>
+            <button class="popup-btn" id="popup-close">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel lateral de resultados -->
+      <aside id="panel">
+        <div id="panel-header">
+          <i class="ti ti-chart-bar"></i> Resultados
+        </div>
+        <div id="results">
+          <p class="hint">Coloca componentes, conéctalos y presiona <strong>Simular</strong>.</p>
+        </div>
+        <div id="status"></div>
+      </aside>
+
+    </div>
+  </div>
+
+  <!-- Scripts (orden importante) -->
+  <script src="js/components.js"></script>
+  <script src="js/canvas.js"></script>
+  <script src="js/solver.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+
+</body>
+</html>
