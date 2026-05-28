@@ -49,11 +49,10 @@ function snapGrid(v) {
 function getTerminals(c) {
   const cx = c.x + c.w / 2;
   const cy = c.y + c.h / 2;
-  const hw = c.w / 2;
-  const hh = c.h / 2;
 
-  // Para resistencias y GND la polaridad no importa
-  // usamos rot para saber orientación física
+  // La tierra siempre conecta por arriba únicamente
+  if (c.type === 'gnd') return [{ x: cx, y: c.y }];
+
   switch (c.rot) {
     case 0:   // horizontal: izq=t0, der=t1
       return [

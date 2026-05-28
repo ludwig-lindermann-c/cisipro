@@ -296,6 +296,8 @@ function onCompClick(e, c) {
 
 // ─── Rotar componente ───
 function rotateComponent(c) {
+  // La tierra no se rota
+  if (c.type === 'gnd') { setStatus('La tierra no necesita rotación.'); return; }
   // Guardar centro exacto antes de rotar
   const centerX = c.x + c.w / 2;
   const centerY = c.y + c.h / 2;
