@@ -40,16 +40,14 @@ function _mna() {
     pts.forEach((_, i) => { termId[`${c.id}-${i}`] = tid++; });
   }
 
-  // Fusionar todos los terminales del nodo en uno solo
+  // Fusionar terminales del nodo
   for (const c of components) {
     if (c.type !== 'node') continue;
     const pts = getTerminals(c);
     for (let i = 1; i < pts.length; i++) {
       const a = termId[`${c.id}-0`];
       const b = termId[`${c.id}-${i}`];
-      if (a !== undefined && b !== undefined) {
-        termId[`${c.id}-${i}`] = a;
-      }
+      if (a !== undefined && b !== undefined) termId[`${c.id}-${i}`] = a;
     }
   }
 
@@ -91,7 +89,7 @@ function _mna() {
     }
   }
 
-  // Conectar cables que comparten el mismo punto físico
+  // Conectar cables que comparten punto físico
   for (let i = 0; i < wires.length; i++) {
     for (let j = i + 1; j < wires.length; j++) {
       const wi = wires[i];
@@ -106,9 +104,8 @@ function _mna() {
       ];
       for (const p1 of pts) {
         for (const p2 of pts2) {
-          if (Math.abs(p1.xa - p2.xb) < 4 && Math.abs(p1.ya - p2.yb) < 4) {
+          if (Math.abs(p1.xa - p2.xb) < 4 && Math.abs(p1.ya - p2.yb) < 4)
             unite(wireNodeId[p1.ka], wireNodeId[p2.kb]);
-          }
         }
       }
     }
@@ -130,17 +127,13 @@ function _mna() {
     }
   }
 
-  // Conectar nodos con cables cercanos a su centro
+  // Conectar nodos con cables cercanos
   for (const c of components) {
     if (c.type !== 'node') continue;
     const cx = c.x + c.w / 2;
     const cy = c.y + c.h / 2;
-
-    // Crear un nodo eléctrico nuevo para este punto
     const nid = wnid++;
     parent.push(nid);
-
-    // Unir todos los cables cuyos extremos estén dentro de 15px del centro
     for (const w of wires) {
       const keyA = `wire-${w.id}-a`;
       const keyB = `wire-${w.id}-b`;
@@ -180,9 +173,13 @@ function _mna() {
   }
 
   // ── Paso 5: construir sistema MNA ──
-  const vSources = components.filter(c => c.type === 'vs');
+  // Fuentes de voltaje + amperímetros (modelados como fuente de 0V)
+  const vSources    = components.filter(c => c.type === 'vs');
+  const amMeters    = components.filter(c => c.type === 'am');
+  const allVSources = [...vSources, ...amMeters];
+
   const N = nodeCount;
-  const M = vSources.length;
+  const M = allVSources.length;
   const S = N + M;
 
   if (S === 0) {
@@ -214,14 +211,14 @@ function _mna() {
     if (n1 > 0) b[n1-1] -= c.value;
   }
 
-  // Estampar fuentes de voltaje
-  vSources.forEach((c, k) => {
+  // Estampar fuentes de voltaje y amperímetros (0V)
+  allVSources.forEach((c, k) => {
     const nPlus  = nodeOf(c.id, 0);
     const nMinus = nodeOf(c.id, 1);
     const row = N + k;
     if (nPlus  > 0) { A[row][nPlus-1]  =  1; A[nPlus-1][row]  =  1; }
     if (nMinus > 0) { A[row][nMinus-1] = -1; A[nMinus-1][row] = -1; }
-    b[row] = c.value;
+    b[row] = (c.type === 'am') ? 0 : c.value;
   });
 
   // ── Paso 6: resolver Ax = b ──
@@ -248,20 +245,30 @@ function _mna() {
       const vc = v1 - v2;
       const ic = vc / c.value;
       compData[c.id] = { v: vc, i: ic, p: vc * ic };
+
     } else if (c.type === 'vs') {
-      const idx = vSources.indexOf(c);
+      const idx = allVSources.indexOf(c);
       const ic  = -(x[N + idx] ?? 0);
       compData[c.id] = { v: c.value, i: ic, p: c.value * ic };
+
     } else if (c.type === 'cs') {
       const vc = v1 - v2;
       compData[c.id] = { v: vc, i: c.value, p: vc * c.value };
+
+    } else if (c.type === 'vm') {
+      const vc = v1 - v2;
+      compData[c.id] = { v: vc, instrument: 'vm' };
+
+    } else if (c.type === 'am') {
+      const idx = allVSources.indexOf(c);
+      const ic  = -(x[N + idx] ?? 0);
+      compData[c.id] = { i: ic, instrument: 'am' };
     }
   }
 
   // ── Paso 9: tensión promedio por cable ──
   const wireVoltage = {};
   let vMax = 0;
-
   for (const w of wires) {
     const nA  = nodeMap[find(wireNodeId[`wire-${w.id}-a`])] ?? 0;
     const nB  = nodeMap[find(wireNodeId[`wire-${w.id}-b`])] ?? 0;
@@ -284,17 +291,6 @@ function _pointOnSegment(px, py, x1, y1, x2, y2) {
   const cx = x1 + t * dx;
   const cy = y1 + t * dy;
   return Math.abs(cx - px) < 6 && Math.abs(cy - py) < 6;
-}
-
-function _pointOnSegmentTol(px, py, x1, y1, x2, y2, tol) {
-  const dx = x2 - x1, dy = y2 - y1;
-  const len2 = dx * dx + dy * dy;
-  if (len2 < 1) return false;
-  const t = ((px - x1) * dx + (py - y1) * dy) / len2;
-  if (t < 0.05 || t > 0.95) return false;
-  const cx = x1 + t * dx;
-  const cy = y1 + t * dy;
-  return Math.abs(cx - px) < tol && Math.abs(cy - py) < tol;
 }
 
 function _gaussElimination(A, b) {

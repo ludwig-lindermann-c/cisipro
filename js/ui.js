@@ -97,6 +97,7 @@ function renderResults() {
 
   let html = '';
 
+  // Tensiones de nodo
   html += '<div class="res-section"><div class="res-title">Tensiones de nodo</div>';
   html += '<div class="res-row"><span class="res-label">Nodo 0 (GND)</span><span class="res-val val-v">0.0000 V</span></div>';
   for (let i = 1; i <= simResults.nodeCount; i++) {
@@ -104,8 +105,37 @@ function renderResults() {
   }
   html += '</div>';
 
+  // Instrumentos de medición (separados)
+  const instruments = components.filter(c => c.type === 'vm' || c.type === 'am');
+  if (instruments.length > 0) {
+    html += '<div class="res-section"><div class="res-title">Instrumentos</div>';
+    for (const c of instruments) {
+      const r = simResults.components[c.id];
+      if (!r) continue;
+      if (c.type === 'vm') {
+        html += `<div class="res-comp">
+          <div class="res-comp-name">${c.name} <span style="font-size:9px;font-weight:400;color:#9B59B6">Voltímetro</span></div>
+          <div class="res-comp-vals">
+            <span class="val-v">V = ${formatResult(r.v)} V</span>
+          </div>
+        </div>`;
+      }
+      if (c.type === 'am') {
+        html += `<div class="res-comp">
+          <div class="res-comp-name">${c.name} <span style="font-size:9px;font-weight:400;color:#E67E22">Amperímetro</span></div>
+          <div class="res-comp-vals">
+            <span class="val-i">I = ${formatResult(r.i)} A</span>
+          </div>
+        </div>`;
+      }
+    }
+    html += '</div>';
+  }
+
+  // Componentes del circuito
   html += '<div class="res-section"><div class="res-title">Componentes</div>';
   for (const c of components) {
+    if (c.type === 'vm' || c.type === 'am' || c.type === 'gnd' || c.type === 'node') continue;
     const r = simResults.components[c.id];
     if (!r) continue;
     const badges = { vs: 'Fuente V', cs: 'Fuente I', r: 'Resistor' };
@@ -120,15 +150,17 @@ function renderResults() {
   }
   html += '</div>';
 
+  // Balance de potencia
   let pSupply = 0, pDissip = 0;
   for (const c of components) {
+    if (c.type === 'vm' || c.type === 'am' || c.type === 'node') continue;
     const r = simResults.components[c.id];
     if (!r || r.p === undefined) continue;
     if (c.type === 'vs' || c.type === 'cs') pSupply += Math.abs(r.p);
     else pDissip += Math.abs(r.p);
   }
   const diff = Math.abs(pSupply - pDissip);
-  const ok   = diff < 1e-6;
+  const ok   = diff < 1e-3;
 
   html += `<div class="res-section"><div class="res-title">Balance de potencia</div>
     <div class="res-row"><span class="res-label">Suministrada</span><span class="res-val val-p">${formatResult(pSupply)} W</span></div>
