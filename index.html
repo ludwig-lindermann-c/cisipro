@@ -34,6 +34,15 @@
         </button>
       </div>
       <div id="top-actions">
+        <span id="filename-display"
+          style="padding:4px 10px;border:0.5px solid var(--border-md);border-radius:6px;
+          font-size:12px;color:var(--text-secondary);cursor:pointer;min-width:120px;
+          display:inline-block;text-align:center"
+          title="Doble clic para renombrar">sin_nombre</span>
+        <input type="text" id="filename-input"
+          style="padding:4px 8px;border:0.5px solid var(--border-md);border-radius:6px;
+          background:var(--bg-secondary);color:var(--text-primary);font-size:12px;
+          width:120px;display:none"/>
         <button class="action-btn" id="btn-simulate">
           <i class="ti ti-player-play"></i> Simular
         </button>
@@ -43,6 +52,13 @@
         <button class="action-btn secondary" id="btn-clear">
           <i class="ti ti-refresh"></i> Limpiar
         </button>
+        <button class="action-btn secondary" id="btn-save">
+          <i class="ti ti-download"></i> Guardar
+        </button>
+        <button class="action-btn secondary" id="btn-open">
+          <i class="ti ti-upload"></i> Abrir
+        </button>
+        <input type="file" id="file-input" accept=".json" style="display:none"/>
       </div>
     </header>
 

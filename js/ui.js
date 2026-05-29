@@ -95,81 +95,37 @@ function renderResults() {
     return;
   }
 
-  let html = '';
-
-  // Tensiones de nodo
-  html += '<div class="res-section"><div class="res-title">Tensiones de nodo</div>';
-  html += '<div class="res-row"><span class="res-label">Nodo 0 (GND)</span><span class="res-val val-v">0.0000 V</span></div>';
-  for (let i = 1; i <= simResults.nodeCount; i++) {
-    html += `<div class="res-row"><span class="res-label">Nodo ${i}</span><span class="res-val val-v">${formatResult(simResults.nodes[i])} V</span></div>`;
-  }
-  html += '</div>';
-
-  // Instrumentos de medición (separados)
   const instruments = components.filter(c => c.type === 'vm' || c.type === 'am');
-  if (instruments.length > 0) {
-    html += '<div class="res-section"><div class="res-title">Instrumentos</div>';
-    for (const c of instruments) {
-      const r = simResults.components[c.id];
-      if (!r) continue;
-      if (c.type === 'vm') {
-        html += `<div class="res-comp">
-          <div class="res-comp-name">${c.name} <span style="font-size:9px;font-weight:400;color:#9B59B6">Voltímetro</span></div>
-          <div class="res-comp-vals">
-            <span class="val-v">V = ${formatResult(r.v)} V</span>
-          </div>
-        </div>`;
-      }
-      if (c.type === 'am') {
-        html += `<div class="res-comp">
-          <div class="res-comp-name">${c.name} <span style="font-size:9px;font-weight:400;color:#E67E22">Amperímetro</span></div>
-          <div class="res-comp-vals">
-            <span class="val-i">I = ${formatResult(r.i)} A</span>
-          </div>
-        </div>`;
-      }
-    }
-    html += '</div>';
+
+  if (instruments.length === 0) {
+    div.innerHTML = '<p class="hint">Agrega voltímetros o amperímetros para ver mediciones.</p>';
+    return;
   }
 
-  // Componentes del circuito
-  html += '<div class="res-section"><div class="res-title">Componentes</div>';
-  for (const c of components) {
-    if (c.type === 'vm' || c.type === 'am' || c.type === 'gnd' || c.type === 'node') continue;
+  let html = '<div class="res-section"><div class="res-title">Instrumentos</div>';
+
+  for (const c of instruments) {
     const r = simResults.components[c.id];
     if (!r) continue;
-    const badges = { vs: 'Fuente V', cs: 'Fuente I', r: 'Resistor' };
-    html += `<div class="res-comp">
-      <div class="res-comp-name">${c.name} <span style="font-size:9px;font-weight:400;color:#888">${badges[c.type] || ''}</span></div>
-      <div class="res-comp-vals">
-        ${r.v !== undefined ? `<span class="val-v">V = ${formatResult(r.v)} V</span>` : ''}
-        ${r.i !== undefined ? `<span class="val-i">I = ${formatResult(r.i)} A</span>` : ''}
-        ${r.p !== undefined ? `<span class="val-p">P = ${formatResult(r.p)} W</span>` : ''}
-      </div>
-    </div>`;
+    if (c.type === 'vm') {
+      html += `<div class="res-comp">
+        <div class="res-comp-name">${c.name} <span style="font-size:9px;font-weight:400;color:#9B59B6">Voltímetro</span></div>
+        <div class="res-comp-vals">
+          <span class="val-v">V = ${formatResult(r.v)} V</span>
+        </div>
+      </div>`;
+    }
+    if (c.type === 'am') {
+      html += `<div class="res-comp">
+        <div class="res-comp-name">${c.name} <span style="font-size:9px;font-weight:400;color:#E67E22">Amperímetro</span></div>
+        <div class="res-comp-vals">
+          <span class="val-i">I = ${formatResult(r.i)} A</span>
+        </div>
+      </div>`;
+    }
   }
+
   html += '</div>';
-
-  // Balance de potencia
-  let pSupply = 0, pDissip = 0;
-  for (const c of components) {
-    if (c.type === 'vm' || c.type === 'am' || c.type === 'node') continue;
-    const r = simResults.components[c.id];
-    if (!r || r.p === undefined) continue;
-    if (c.type === 'vs' || c.type === 'cs') pSupply += Math.abs(r.p);
-    else pDissip += Math.abs(r.p);
-  }
-  const diff = Math.abs(pSupply - pDissip);
-  const ok   = diff < 1e-3;
-
-  html += `<div class="res-section"><div class="res-title">Balance de potencia</div>
-    <div class="res-row"><span class="res-label">Suministrada</span><span class="res-val val-p">${formatResult(pSupply)} W</span></div>
-    <div class="res-row"><span class="res-label">Disipada</span><span class="res-val val-p">${formatResult(pDissip)} W</span></div>
-    <div class="res-row"><span class="res-label">Balance</span>
-      <span class="res-val" style="color:${ok ? '#3B6D11' : '#E8593C'}">${ok ? '✓ OK' : '⚠ ' + formatResult(diff) + 'W'}</span>
-    </div>
-  </div>`;
-
   div.innerHTML = html;
 }
 
@@ -195,7 +151,16 @@ function bindUI() {
       renderResults();
       document.getElementById('btn-simulate').style.display = 'none';
       document.getElementById('btn-stop').style.display = '';
-      setStatus('✓ Simulación completada correctamente.');
+      // Bloquear botones de edición
+      ['btn-select','btn-wire','btn-rotate','btn-undo','btn-delete'].forEach(id => {
+        const btn = document.getElementById(id);
+        btn.disabled = true;
+        btn.style.opacity = '0.4';
+        btn.style.cursor = 'not-allowed';
+      });
+      // Bloquear drag del toolbar
+      document.querySelectorAll('.tool-btn[draggable]').forEach(b => b.setAttribute('draggable','false'));
+      setStatus('✓ Simulación completada. Presiona Detener para editar.');
     }
   });
 
@@ -205,6 +170,17 @@ function bindUI() {
     clearResults();
     document.getElementById('btn-stop').style.display = 'none';
     document.getElementById('btn-simulate').style.display = '';
+    // Desbloquear botones de edición
+    ['btn-select','btn-wire','btn-rotate','btn-undo','btn-delete'].forEach(id => {
+      const btn = document.getElementById(id);
+      btn.disabled = false;
+      btn.style.opacity = '';
+      btn.style.cursor = '';
+    });
+    // Reactivar drag del toolbar
+    document.querySelectorAll('.tool-btn').forEach(b => {
+      if (b.dataset.type) b.setAttribute('draggable','true');
+    });
     setStatus('Simulación detenida.');
   });
 
@@ -239,12 +215,111 @@ function bindUI() {
     if (e.key === 'Escape') closePopup();
   });
 
+  // ─── Nombre de archivo editable ───
+  const filenameDisplay = document.getElementById('filename-display');
+  const filenameInput   = document.getElementById('filename-input');
+
+  filenameDisplay.addEventListener('dblclick', () => {
+    filenameInput.value = filenameDisplay.textContent;
+    filenameDisplay.style.display = 'none';
+    filenameInput.style.display   = '';
+    filenameInput.focus();
+    filenameInput.select();
+  });
+
+  filenameInput.addEventListener('blur', () => {
+    const val = filenameInput.value.trim();
+    filenameDisplay.textContent     = val || 'sin_nombre';
+    filenameDisplay.style.display   = '';
+    filenameInput.style.display     = 'none';
+  });
+
+  filenameInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') filenameInput.blur();
+    if (e.key === 'Escape') {
+      filenameInput.style.display   = 'none';
+      filenameDisplay.style.display = '';
+    }
+  });
   document.querySelectorAll('.tool-btn[draggable]').forEach(btn => {
     btn.addEventListener('dragstart', e => {
       e.dataTransfer.setData('compType', btn.dataset.type);
     });
   });
+// ─── Guardar circuito ───
+  document.getElementById('btn-save').addEventListener('click', async () => {
+    const data = {
+      version: '1.0',
+      components: components.map(c => ({...c})),
+      wires:      wires.map(w => ({...w})),
+      junctions:  junctions.map(j => ({...j}))
+    };
+    const json = JSON.stringify(data, null, 2);
+    const filename = document.getElementById('filename-display').textContent.trim() || 'sin_nombre';
+    const suggestedName = filename.endsWith('.json') ? filename : filename + '.json';
 
+    // Usar File System Access API si está disponible (Chrome/Edge)
+    if (window.showSaveFilePicker) {
+      try {
+        const fileHandle = await window.showSaveFilePicker({
+          suggestedName,
+          types: [{ description: 'Circuito CiSIPro', accept: { 'application/json': ['.json'] } }]
+        });
+        const writable = await fileHandle.createWritable();
+        await writable.write(json);
+        await writable.close();
+        setStatus(`Circuito guardado: ${fileHandle.name}`);
+      } catch (err) {
+        if (err.name !== 'AbortError') setStatus('⚠ Error al guardar: ' + err.message);
+      }
+    } else {
+      // Fallback para otros navegadores
+      const blob = new Blob([json], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = suggestedName;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus(`Circuito guardado: ${suggestedName}`);
+    }
+  });
+
+  // ─── Abrir circuito ───
+  document.getElementById('btn-open').addEventListener('click', () => {
+    document.getElementById('file-input').click();
+  });
+
+  document.getElementById('file-input').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      try {
+        const data = JSON.parse(evt.target.result);
+        if (!data.components || !data.wires) {
+          setStatus('⚠ Archivo inválido.');
+          return;
+        }
+        _saveHistory();
+        components = data.components;
+        wires      = data.wires;
+        junctions  = data.junctions || [];
+        simResults = null;
+        // Restaurar contador de IDs
+        const maxId = [...components, ...wires, ...junctions]
+          .reduce((m, x) => Math.max(m, x.id || 0), 0);
+        _idCounter = maxId;
+        renderAll();
+        clearResults();
+        setStatus(`Circuito cargado: ${file.name}`);
+      } catch (err) {
+        setStatus('⚠ Error al leer el archivo: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
   document.addEventListener('keydown', e => {
     if (document.getElementById('edit-popup').style.display === 'block') return;
 

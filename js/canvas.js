@@ -17,6 +17,14 @@ let _canvas = null;
 let _compLayer = null;
 let _wireLayer = null;
 
+// ─── Zoom y paneo ───
+let _zoom   = 1;
+let _panX   = 0;
+let _panY   = 0;
+let _panning = false;
+let _panStart = null;
+let _mainGroup = null;
+
 // ─── Historial para deshacer ───
 let _history = [];
 const MAX_HISTORY = 30;
@@ -46,12 +54,18 @@ function undoLast() {
 // ─── Inicializar canvas ───
 function initCanvas() {
   _canvas = document.getElementById('canvas');
+
+  // Grupo principal que recibe zoom y paneo
+  _mainGroup = svgEl('g', { id: 'main-group' });
   _wireLayer = svgEl('g', { id: 'wire-layer' });
   _compLayer = svgEl('g', { id: 'comp-layer' });
-  _canvas.appendChild(_wireLayer);
-  _canvas.appendChild(_compLayer);
+  _mainGroup.appendChild(_wireLayer);
+  _mainGroup.appendChild(_compLayer);
+  _canvas.appendChild(_mainGroup);
+
   drawGrid();
   bindCanvasEvents();
+  bindZoomPan();
   window.addEventListener('resize', drawGrid);
 }
 
@@ -63,8 +77,9 @@ function drawGrid() {
   _canvas.insertBefore(gl, _canvas.firstChild);
   const w = _canvas.clientWidth  || 800;
   const h = _canvas.clientHeight || 600;
-  for (let x = 0; x <= w; x += GRID)
-    for (let y = 0; y <= h; y += GRID)
+  // Grid más grande para cubrir al hacer paneo
+  for (let x = -2000; x <= w + 2000; x += GRID)
+    for (let y = -2000; y <= h + 2000; y += GRID)
       gl.appendChild(svgEl('circle', { cx: x, cy: y, r: 1.2, class: 'grid-dot' }));
 }
 
@@ -250,6 +265,7 @@ function bindCanvasEvents() {
   _canvas.addEventListener('mouseup', () => { _drag = null; });
 
   _canvas.addEventListener('dblclick', e => {
+    if (simResults) return; // bloquear durante simulación
     const gEl = e.target.closest('[data-cid]');
     if (!gEl) return;
     e.stopPropagation();
@@ -262,7 +278,12 @@ function bindCanvasEvents() {
 
 function canvasPoint(e) {
   const r = _canvas.getBoundingClientRect();
-  return { x: e.clientX - r.left, y: e.clientY - r.top };
+  const mx = e.clientX - r.left;
+  const my = e.clientY - r.top;
+  return {
+    x: (mx - _panX) / _zoom,
+    y: (my - _panY) / _zoom
+  };
 }
 
 // ─── Confirmar cable ───
@@ -530,6 +551,7 @@ function renderJunction(j) {
 // ─── Eventos de componente ───
 function onCompMouseDown(e, c) {
   if (mode !== 'select') return;
+  if (simResults) return; // bloquear durante simulación
   e.stopPropagation();
   selectedId = c.id;
   const pt = canvasPoint(e);
@@ -538,17 +560,16 @@ function onCompMouseDown(e, c) {
   } else {
     _drag = { comp: c, ox: pt.x - c.x, oy: pt.y - c.y };
   }
-  simResults = null;
   renderAll();
 }
 
 function onCompClick(e, c) {
+  if (simResults) return; // bloquear durante simulación
   if (mode === 'delete') {
     e.stopPropagation();
     _saveHistory();
     components = components.filter(x => x.id !== c.id);
     wires      = wires.filter(w => w.c1 !== c.id && w.c2 !== c.id);
-    simResults = null;
     renderAll();
     setStatus(`${c.name} eliminado.`);
   }
@@ -683,4 +704,90 @@ function _splitWire(w, x, y) {
   };
   wires = wires.filter(wr => wr.id !== w.id);
   wires.push(seg1, seg2);
+}
+
+// ─── Zoom y paneo ───
+function bindZoomPan() {
+  // Zoom con rueda del mouse
+  _canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const r    = _canvas.getBoundingClientRect();
+    const mx   = e.clientX - r.left;
+    const my   = e.clientY - r.top;
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.max(0.2, Math.min(4, _zoom * delta));
+
+    // Zoom centrado en el cursor
+    _panX = mx - (mx - _panX) * (newZoom / _zoom);
+    _panY = my - (my - _panY) * (newZoom / _zoom);
+    _zoom = newZoom;
+
+    _applyTransform();
+  }, { passive: false });
+
+  // Paneo con click medio
+  _canvas.addEventListener('mousedown', e => {
+    if (e.button === 1) {
+      e.preventDefault();
+      _panning  = true;
+      _panStart = { x: e.clientX - _panX, y: e.clientY - _panY };
+      _canvas.style.cursor = 'grabbing';
+    }
+  });
+
+  // Paneo con Espacio + arrastrar
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space' && !_panning) {
+      e.preventDefault();
+      _canvas.style.cursor = 'grab';
+      _canvas.addEventListener('mousedown', _startSpacePan);
+    }
+  });
+
+  window.addEventListener('keyup', e => {
+    if (e.code === 'Space') {
+      _canvas.style.cursor = mode === 'wire' ? 'crosshair' : 'default';
+      _canvas.removeEventListener('mousedown', _startSpacePan);
+    }
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (_panning && _panStart) {
+      _panX = e.clientX - _panStart.x;
+      _panY = e.clientY - _panStart.y;
+      _applyTransform();
+    }
+  });
+
+  window.addEventListener('mouseup', e => {
+    if (e.button === 1 || _panning) {
+      _panning  = false;
+      _panStart = null;
+      _canvas.style.cursor = mode === 'wire' ? 'crosshair' : 'default';
+    }
+  });
+
+  // Doble clic en el logo resetea el zoom
+  document.getElementById('logo').addEventListener('dblclick', () => {
+    _zoom = 1; _panX = 0; _panY = 0;
+    _applyTransform();
+    setStatus('Vista restablecida.');
+  });
+}
+
+function _startSpacePan(e) {
+  if (e.button !== 0) return;
+  _panning  = true;
+  _panStart = { x: e.clientX - _panX, y: e.clientY - _panY };
+  _canvas.style.cursor = 'grabbing';
+}
+
+function _applyTransform() {
+  _mainGroup.setAttribute('transform',
+    `translate(${_panX},${_panY}) scale(${_zoom})`);
+
+  // Mover el grid con el paneo pero sin zoom
+  const gl = document.getElementById('grid-layer');
+  if (gl) gl.setAttribute('transform',
+    `translate(${_panX % (GRID * _zoom)},${_panY % (GRID * _zoom)}) scale(${_zoom})`);
 }
