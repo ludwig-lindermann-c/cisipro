@@ -102,24 +102,49 @@ function renderResults() {
     return;
   }
 
+  const selectStyle = `font-size:10px;padding:2px 4px;border:0.5px solid var(--border-md);
+    border-radius:4px;background:var(--bg-secondary);color:var(--text-secondary)`;
+
   let html = '<div class="res-section"><div class="res-title">Instrumentos</div>';
 
   for (const c of instruments) {
     const r = simResults.components[c.id];
     if (!r) continue;
+
     if (c.type === 'vm') {
+      const raw = r.v;
       html += `<div class="res-comp">
         <div class="res-comp-name">${c.name} <span style="font-size:9px;font-weight:400;color:#9B59B6">Voltímetro</span></div>
-        <div class="res-comp-vals">
-          <span class="val-v">V = ${formatResult(r.v)} V</span>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+          <span class="val-v" id="disp-${c.id}" style="font-family:monospace;font-size:12px;min-width:90px">${_fmtSig(raw, 1)} V</span>
+          <select id="prefix-${c.id}" onchange="updateDisplay('${c.id}',${raw},'V',this.value)"
+            style="${selectStyle}">
+            <option value="1e9">GV</option>
+            <option value="1e6">MV</option>
+            <option value="1e3">kV</option>
+            <option value="1" selected>V</option>
+            <option value="1e-3">mV</option>
+            <option value="1e-6">μV</option>
+            <option value="1e-9">nV</option>
+          </select>
         </div>
       </div>`;
     }
+
     if (c.type === 'am') {
+      const raw = r.i;
       html += `<div class="res-comp">
         <div class="res-comp-name">${c.name} <span style="font-size:9px;font-weight:400;color:#E67E22">Amperímetro</span></div>
-        <div class="res-comp-vals">
-          <span class="val-i">I = ${formatResult(r.i)} A</span>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+          <span class="val-i" id="disp-${c.id}" style="font-family:monospace;font-size:12px;min-width:90px">${_fmtSig(raw, 1)} A</span>
+          <select id="prefix-${c.id}" onchange="updateDisplay('${c.id}',${raw},'A',this.value)"
+            style="${selectStyle}">
+            <option value="1e3">kA</option>
+            <option value="1" selected>A</option>
+            <option value="1e-3">mA</option>
+            <option value="1e-6">μA</option>
+            <option value="1e-9">nA</option>
+          </select>
         </div>
       </div>`;
     }
@@ -127,6 +152,50 @@ function renderResults() {
 
   html += '</div>';
   div.innerHTML = html;
+}
+
+function _fmtSig(value, prefix) {
+  const converted = value / prefix;
+  const s = parseFloat(converted.toPrecision(4)).toString();
+  return s;
+}
+
+function updateDisplay(id, rawValue, unit, prefixStr) {
+  const prefix = parseFloat(prefixStr);
+  const prefixLabels = {
+    '1e9': 'G', '1e6': 'M', '1e3': 'k',
+    '1': '', '1e-3': 'm', '1e-6': 'μ', '1e-9': 'n'
+  };
+  const label     = prefixLabels[prefixStr] || '';
+  const converted = rawValue / prefix;
+  const display   = parseFloat(converted.toPrecision(4)).toString();
+  const el = document.getElementById('disp-' + id);
+  if (el) el.textContent = `${display} ${label}${unit}`;
+}
+
+function updateDisplay(id, rawValue, unit, prefixStr, decimals) {
+  const prefix = parseFloat(prefixStr);
+  const dec    = parseInt(decimals);
+  const converted = rawValue / prefix;
+  const prefixLabels = {
+    '1e9': 'G', '1e6': 'M', '1e3': 'k',
+    '1': '', '1e-3': 'm', '1e-6': 'μ', '1e-9': 'n'
+  };
+  const label = prefixLabels[prefixStr] || '';
+  const el = document.getElementById('disp-' + id);
+  if (el) el.textContent = `${converted.toFixed(dec)} ${label}${unit}`;
+}
+
+function updateDisplay(id, rawValue, unit, prefixStr) {
+  const prefix = parseFloat(prefixStr);
+  const converted = rawValue / prefix;
+  const prefixLabels = {
+    '1e9': 'G', '1e6': 'M', '1e3': 'k',
+    '1': '', '1e-3': 'm', '1e-6': 'μ', '1e-9': 'n'
+  };
+  const label = prefixLabels[prefixStr] || '';
+  const el = document.getElementById('disp-' + id);
+  if (el) el.textContent = `${parseFloat(converted.toPrecision(5))} ${label}${unit}`;
 }
 
 function clearResults() {
@@ -306,10 +375,15 @@ function bindUI() {
         wires      = data.wires;
         junctions  = data.junctions || [];
         simResults = null;
-        // Restaurar contador de IDs
         const maxId = [...components, ...wires, ...junctions]
           .reduce((m, x) => Math.max(m, x.id || 0), 0);
         _idCounter = maxId;
+
+        // Mostrar nombre del archivo sin extensión
+        const nameWithoutExt = file.name.replace(/\.json$/i, '');
+        document.getElementById('filename-display').textContent = nameWithoutExt;
+        document.getElementById('filename-input').value = nameWithoutExt;
+
         renderAll();
         clearResults();
         setStatus(`Circuito cargado: ${file.name}`);
