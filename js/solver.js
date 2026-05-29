@@ -130,40 +130,24 @@ function _mna() {
     }
   }
 
-  // Conectar nodos con todos los cables que pasen por su centro
+  // Conectar nodos con cables cercanos a su centro
   for (const c of components) {
     if (c.type !== 'node') continue;
     const cx = c.x + c.w / 2;
     const cy = c.y + c.h / 2;
-    const nodeTid = termId[`${c.id}-0`];
-    if (nodeTid === undefined) continue;
 
+    // Crear un nodo eléctrico nuevo para este punto
+    const nid = wnid++;
+    parent.push(nid);
+
+    // Unir todos los cables cuyos extremos estén dentro de 15px del centro
     for (const w of wires) {
       const keyA = `wire-${w.id}-a`;
       const keyB = `wire-${w.id}-b`;
-
-      const a_near = Math.abs(w.x1 - cx) < 25 && Math.abs(w.y1 - cy) < 25;
-      const b_near = Math.abs(w.x2 - cx) < 25 && Math.abs(w.y2 - cy) < 25;
-
-      if (a_near) unite(nodeTid, wireNodeId[keyA]);
-      if (b_near) unite(nodeTid, wireNodeId[keyB]);
-
-      if (!a_near && !b_near) {
-        const dx   = w.x2 - w.x1;
-        const dy   = w.y2 - w.y1;
-        const len2 = dx * dx + dy * dy;
-        if (len2 > 0) {
-          const t  = ((cx - w.x1) * dx + (cy - w.y1) * dy) / len2;
-          if (t >= 0 && t <= 1) {
-            const px = w.x1 + t * dx;
-            const py = w.y1 + t * dy;
-            if (Math.abs(px - cx) < 25 && Math.abs(py - cy) < 25) {
-              unite(nodeTid, wireNodeId[keyA]);
-              unite(nodeTid, wireNodeId[keyB]);
-            }
-          }
-        }
-      }
+      if (Math.abs(w.x1 - cx) < 15 && Math.abs(w.y1 - cy) < 15)
+        unite(nid, wireNodeId[keyA]);
+      if (Math.abs(w.x2 - cx) < 15 && Math.abs(w.y2 - cy) < 15)
+        unite(nid, wireNodeId[keyB]);
     }
   }
 

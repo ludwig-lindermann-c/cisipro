@@ -107,7 +107,27 @@ function bindCanvasEvents() {
       // Verificar si hay un nodo cerca
       const nearNode = _snapToNearestNode(pt.x, pt.y);
       if (nearNode) {
-        _finishWireToPoint(nearNode.x, nearNode.y, nearNode.nodeComp, 0);
+        const allPoints = [
+          { x: _wireStart.x, y: _wireStart.y },
+          ..._wirePoints,
+          { x: nearNode.x, y: nearNode.y }
+        ];
+        _saveHistory();
+        for (let i = 0; i < allPoints.length - 1; i++) {
+          const x1 = allPoints[i].x, y1 = allPoints[i].y;
+          const x2 = allPoints[i+1].x, y2 = allPoints[i+1].y;
+          if (x1 === x2 && y1 === y2) continue;
+          wires.push({
+            id: nextId(), x1, y1, x2, y2,
+            c1:  i === 0 ? _wireStart.compId : null,
+            ti1: i === 0 ? _wireStart.termIdx : null,
+            c2:  null, ti2: null
+          });
+        }
+        cancelWire();
+        simResults = null;
+        renderAll();
+        setStatus('¡Conexión al nodo realizada!');
         return;
       }
 
@@ -146,7 +166,27 @@ function bindCanvasEvents() {
       // Verificar si hay un nodo cerca
       const nearNode = _snapToNearestNode(pt.x, pt.y);
       if (nearNode) {
-        _finishWireToPoint(nearNode.x, nearNode.y, nearNode.nodeComp, 0);
+        const allPoints = [
+          { x: _wireStart.x, y: _wireStart.y },
+          ..._wirePoints,
+          { x: nearNode.x, y: nearNode.y }
+        ];
+        _saveHistory();
+        for (let i = 0; i < allPoints.length - 1; i++) {
+          const x1 = allPoints[i].x, y1 = allPoints[i].y;
+          const x2 = allPoints[i+1].x, y2 = allPoints[i+1].y;
+          if (x1 === x2 && y1 === y2) continue;
+          wires.push({
+            id: nextId(), x1, y1, x2, y2,
+            c1:  i === 0 ? _wireStart.compId : null,
+            ti1: i === 0 ? _wireStart.termIdx : null,
+            c2:  null, ti2: null
+          });
+        }
+        cancelWire();
+        simResults = null;
+        renderAll();
+        setStatus('¡Conexión al nodo realizada!');
         return;
       }
 
@@ -356,18 +396,8 @@ function renderComponent(c) {
 
   // Terminales
   if (c.type === 'node') {
-    const hitArea = svgEl('circle', {
-      cx: c.w / 2, cy: c.h / 2, r: 10,
-      fill: 'transparent', stroke: 'none',
-      cursor: 'crosshair'
-    });
-    hitArea.addEventListener('mousedown', e => {
-      e.stopPropagation();
-      const ncx = c.x + c.w / 2;
-      const ncy = c.y + c.h / 2;
-      onTerminalClick(c, 0, { x: ncx, y: ncy });
-    });
-    g.appendChild(hitArea);
+    // El nodo solo es visual — no tiene terminales clickeables
+    // Los cables se conectan a su centro por proximidad en el solver
   } else {
     getTerminals(c).forEach((pt, idx) => {
       const dot = svgEl('circle', {
@@ -567,16 +597,16 @@ function _pointOnSegment(px, py, x1, y1, x2, y2) {
   return Math.abs(cx - px) < 6 && Math.abs(cy - py) < 6;
 }
 
-function _snapToWire(w, px, py) {
-  const dx = w.x2 - w.x1;
-  const dy = w.y2 - w.y1;
-  const len2 = dx * dx + dy * dy;
-  const t = ((px - w.x1) * dx + (py - w.y1) * dy) / len2;
-  const tc = Math.max(0.05, Math.min(0.95, t));
-  return {
-    x: snapGrid(w.x1 + tc * dx),
-    y: snapGrid(w.y1 + tc * dy)
-  };
+function _snapToNearestNode(x, y) {
+  for (const c of components) {
+    if (c.type !== 'node') continue;
+    const cx = c.x + c.w / 2;
+    const cy = c.y + c.h / 2;
+    if (Math.abs(x - cx) < 15 && Math.abs(y - cy) < 15) {
+      return { x: cx, y: cy };
+    }
+  }
+  return null;
 }
 
 function _splitWire(w, x, y) {
