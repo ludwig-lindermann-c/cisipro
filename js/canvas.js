@@ -12,6 +12,7 @@ let _wireStart = null;
 let _tempWire = null;
 let _wirePoints = [];
 let _tempLines = [];
+let _snapIndicator = null; // indicador visual de snap
 let _canvas = null;
 let _compLayer = null;
 let _wireLayer = null;
@@ -67,17 +68,72 @@ function drawGrid() {
       gl.appendChild(svgEl('circle', { cx: x, cy: y, r: 1.2, class: 'grid-dot' }));
 }
 
-// ─── Snap al nodo más cercano ───
-function _snapToNearestNode(x, y) {
+// ─── Detección de punto de snap ───
+// Retorna {x, y, type} donde type = 'terminal' | 'wire-end' | 'wire-mid' | null
+function _detectSnapPoint(px, py) {
+  const SNAP_R = GRID; // radio de detección = 1 celda de grilla
+
+  // 1. Terminal de componente
   for (const c of components) {
-    if (c.type !== 'node') continue;
-    const cx = c.x + c.w / 2;
-    const cy = c.y + c.h / 2;
-    if (Math.abs(x - cx) < 30 && Math.abs(y - cy) < 30) {
-      return { x: cx, y: cy, nodeComp: c };
+    for (const t of getTerminals(c)) {
+      if (Math.abs(t.x - px) < SNAP_R && Math.abs(t.y - py) < SNAP_R) {
+        return { x: t.x, y: t.y, type: 'terminal' };
+      }
     }
   }
+
+  // 2. Extremo de cable existente
+  for (const w of wires) {
+    if (Math.abs(w.x1 - px) < SNAP_R && Math.abs(w.y1 - py) < SNAP_R)
+      return { x: w.x1, y: w.y1, type: 'wire-end' };
+    if (Math.abs(w.x2 - px) < SNAP_R && Math.abs(w.y2 - py) < SNAP_R)
+      return { x: w.x2, y: w.y2, type: 'wire-end' };
+  }
+
+  // 3. Punto intermedio de cable (sobre el segmento, en la grilla)
+  for (const w of wires) {
+    const snapped = _nearestGridPointOnSegment(px, py, w);
+    if (snapped) return { x: snapped.x, y: snapped.y, type: 'wire-mid', wire: w };
+  }
+
   return null;
+}
+
+// Punto de grilla más cercano sobre un segmento
+function _nearestGridPointOnSegment(px, py, w) {
+  const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1) return null;
+  const t = ((px - w.x1) * dx + (py - w.y1) * dy) / len2;
+  if (t < 0.05 || t > 0.95) return null;
+  const cx = snapGrid(w.x1 + t * dx);
+  const cy = snapGrid(w.y1 + t * dy);
+  if (Math.abs(cx - px) < GRID && Math.abs(cy - py) < GRID) {
+    // Verificar que el punto snappeado realmente esté sobre el segmento
+    const t2 = ((cx - w.x1) * dx + (cy - w.y1) * dy) / len2;
+    if (t2 >= 0.05 && t2 <= 0.95) return { x: cx, y: cy };
+  }
+  return null;
+}
+
+// ─── Indicador visual de snap ───
+function _showSnapIndicator(x, y, type) {
+  _hideSnapIndicator();
+  const color = type === 'terminal'  ? '#3B8BD4' :
+                type === 'wire-end'  ? '#3B8BD4' :
+                type === 'wire-mid'  ? '#E8B93C' : '#888';
+  _snapIndicator = svgEl('circle', {
+    cx: x, cy: y, r: 7,
+    fill: 'none',
+    stroke: color,
+    'stroke-width': '2',
+    opacity: '0.9'
+  });
+  _wireLayer.appendChild(_snapIndicator);
+}
+
+function _hideSnapIndicator() {
+  if (_snapIndicator) { _snapIndicator.remove(); _snapIndicator = null; }
 }
 
 // ─── Eventos del canvas ───
@@ -97,105 +153,71 @@ function bindCanvasEvents() {
     setStatus(`${c.name} añadido. Doble clic para editar.`);
   });
 
-  _canvas.addEventListener('click', e => {
-    const onCanvas = e.target === _canvas || e.target.classList.contains('grid-dot');
-
-    // Clic sobre un cable en modo wire — crear junction
-    if (mode === 'wire' && _wireStart && !onCanvas) {
-      const pt  = canvasPoint(e);
-
-      // Verificar si hay un nodo cerca
-      const nearNode = _snapToNearestNode(pt.x, pt.y);
-      if (nearNode) {
-        const allPoints = [
-          { x: _wireStart.x, y: _wireStart.y },
-          ..._wirePoints,
-          { x: nearNode.x, y: nearNode.y }
-        ];
-        _saveHistory();
-        for (let i = 0; i < allPoints.length - 1; i++) {
-          const x1 = allPoints[i].x, y1 = allPoints[i].y;
-          const x2 = allPoints[i+1].x, y2 = allPoints[i+1].y;
-          if (x1 === x2 && y1 === y2) continue;
-          wires.push({
-            id: nextId(), x1, y1, x2, y2,
-            c1:  i === 0 ? _wireStart.compId : null,
-            ti1: i === 0 ? _wireStart.termIdx : null,
-            c2:  null, ti2: null
-          });
-        }
-        cancelWire();
-        simResults = null;
-        renderAll();
-        setStatus('¡Conexión al nodo realizada!');
-        return;
+  _canvas.addEventListener('mousemove', e => {
+    if (_drag) {
+      const pt = canvasPoint(e);
+      if (_drag.isNode) {
+        _drag.comp.x = snapGrid(pt.x) - _drag.comp.w / 2;
+        _drag.comp.y = snapGrid(pt.y) - _drag.comp.h / 2;
+      } else {
+        _drag.comp.x = snapGrid(pt.x - _drag.ox);
+        _drag.comp.y = snapGrid(pt.y - _drag.oy);
       }
-
-      const hit = _wireAtPoint(pt.x, pt.y);
-      if (hit) {
-        _saveHistory();
-        const snapped = _snapToWire(hit, pt.x, pt.y);
-        _splitWire(hit, snapped.x, snapped.y);
-        const allPoints = [
-          { x: _wireStart.x, y: _wireStart.y },
-          ..._wirePoints,
-          { x: snapped.x, y: snapped.y }
-        ];
-        for (let i = 0; i < allPoints.length - 1; i++) {
-          wires.push({
-            id: nextId(),
-            x1: allPoints[i].x,   y1: allPoints[i].y,
-            x2: allPoints[i+1].x, y2: allPoints[i+1].y,
-            c1: i === 0 ? _wireStart.compId : null,
-            ti1: i === 0 ? _wireStart.termIdx : null,
-            c2: null, ti2: null
-          });
-        }
-        cancelWire();
-        simResults = null;
-        renderAll();
-        setStatus('¡Junction creado! Presiona Simular para analizar.');
-        return;
-      }
+      renderAll();
+      return;
     }
 
-    // Clic en canvas vacío en modo wire — agregar punto de quiebre o conectar a nodo
-    if (mode === 'wire' && _wireStart && onCanvas) {
-      const pt = canvasPoint(e);
-
-      // Verificar si hay un nodo cerca
-      const nearNode = _snapToNearestNode(pt.x, pt.y);
-      if (nearNode) {
-        const allPoints = [
-          { x: _wireStart.x, y: _wireStart.y },
-          ..._wirePoints,
-          { x: nearNode.x, y: nearNode.y }
-        ];
-        _saveHistory();
-        for (let i = 0; i < allPoints.length - 1; i++) {
-          const x1 = allPoints[i].x, y1 = allPoints[i].y;
-          const x2 = allPoints[i+1].x, y2 = allPoints[i+1].y;
-          if (x1 === x2 && y1 === y2) continue;
-          wires.push({
-            id: nextId(), x1, y1, x2, y2,
-            c1:  i === 0 ? _wireStart.compId : null,
-            ti1: i === 0 ? _wireStart.termIdx : null,
-            c2:  null, ti2: null
-          });
-        }
-        cancelWire();
-        simResults = null;
-        renderAll();
-        setStatus('¡Conexión al nodo realizada!');
-        return;
-      }
-
+    if (mode === 'wire' && _wireStart) {
+      const pt   = canvasPoint(e);
       const last = _wirePoints.length > 0
         ? _wirePoints[_wirePoints.length - 1]
         : { x: _wireStart.x, y: _wireStart.y };
       const snapped = snapAngle(last, pt);
-      _wirePoints.push(snapped);
 
+      // Detectar punto de snap cercano
+      const snap = _detectSnapPoint(snapped.x, snapped.y);
+      if (snap) {
+        _showSnapIndicator(snap.x, snap.y, snap.type);
+        if (_tempWire) {
+          _tempWire.setAttribute('x2', snap.x);
+          _tempWire.setAttribute('y2', snap.y);
+        }
+      } else {
+        _hideSnapIndicator();
+        if (_tempWire) {
+          _tempWire.setAttribute('x2', snapped.x);
+          _tempWire.setAttribute('y2', snapped.y);
+        }
+      }
+    }
+  });
+
+  _canvas.addEventListener('click', e => {
+    const onCanvas = e.target === _canvas || e.target.classList.contains('grid-dot');
+
+    if (mode === 'wire' && _wireStart) {
+      const pt = canvasPoint(e);
+      const last = _wirePoints.length > 0
+        ? _wirePoints[_wirePoints.length - 1]
+        : { x: _wireStart.x, y: _wireStart.y };
+      const snapped = snapAngle(last, pt);
+
+      // Detectar punto de snap
+      const snap = _detectSnapPoint(snapped.x, snapped.y);
+
+      if (snap) {
+        // Conectar al punto detectado
+        if (snap.type === 'wire-mid' && snap.wire) {
+          // Dividir el cable en ese punto y crear junction
+          _splitWire(snap.wire, snap.x, snap.y);
+        }
+        // Terminar el cable en ese punto
+        _commitWire(snap.x, snap.y);
+        return;
+      }
+
+      // Sin snap — agregar punto de quiebre
+      _wirePoints.push(snapped);
       const seg = svgEl('line', {
         x1: last.x, y1: last.y,
         x2: snapped.x, y2: snapped.y,
@@ -214,7 +236,7 @@ function bindCanvasEvents() {
         'stroke-dasharray': '6 3', opacity: '0.8'
       });
       _wireLayer.appendChild(_tempWire);
-      setStatus('Punto agregado. Clic en terminal o cable para conectar.');
+      setStatus('Punto agregado. Acerca el cable a otro terminal o cable para conectar.');
       return;
     }
 
@@ -222,34 +244,6 @@ function bindCanvasEvents() {
       selectedId = null;
       closePopup();
       renderAll();
-    }
-  });
-
-  _canvas.addEventListener('mousemove', e => {
-    if (_drag) {
-      const pt = canvasPoint(e);
-      if (_drag.isNode) {
-        const cx = snapGrid(pt.x);
-        const cy = snapGrid(pt.y);
-        _drag.comp.x = cx - _drag.comp.w / 2;
-        _drag.comp.y = cy - _drag.comp.h / 2;
-      } else {
-        _drag.comp.x = snapGrid(pt.x - _drag.ox);
-        _drag.comp.y = snapGrid(pt.y - _drag.oy);
-      }
-      renderAll();
-      return;
-    }
-    if (mode === 'wire' && _wireStart) {
-      const pt   = canvasPoint(e);
-      const last = _wirePoints.length > 0
-        ? _wirePoints[_wirePoints.length - 1]
-        : { x: _wireStart.x, y: _wireStart.y };
-      const snapped = snapAngle(last, pt);
-      if (_tempWire) {
-        _tempWire.setAttribute('x2', snapped.x);
-        _tempWire.setAttribute('y2', snapped.y);
-      }
     }
   });
 
@@ -271,20 +265,30 @@ function canvasPoint(e) {
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 }
 
-// ─── Terminar cable en un punto específico ───
-function _finishWireToPoint(x, y, comp, termIdx) {
+// ─── Confirmar cable ───
+function _commitWire(x2, y2) {
   const allPoints = [
     { x: _wireStart.x, y: _wireStart.y },
     ..._wirePoints,
-    { x, y }
+    { x: x2, y: y2 }
   ];
+
+  // Encontrar componente destino en el punto final
+  let destComp = null, destIdx = null;
+  for (const c of components) {
+    const terms = getTerminals(c);
+    for (let i = 0; i < terms.length; i++) {
+      if (Math.abs(terms[i].x - x2) < GRID && Math.abs(terms[i].y - y2) < GRID) {
+        destComp = c; destIdx = i; break;
+      }
+    }
+    if (destComp) break;
+  }
 
   _saveHistory();
   for (let i = 0; i < allPoints.length - 1; i++) {
     const x1 = allPoints[i].x,   y1 = allPoints[i].y;
     const x2 = allPoints[i+1].x, y2 = allPoints[i+1].y;
-
-    // Ignorar cables de longitud cero
     if (x1 === x2 && y1 === y2) continue;
 
     wires.push({
@@ -292,11 +296,12 @@ function _finishWireToPoint(x, y, comp, termIdx) {
       x1, y1, x2, y2,
       c1:  i === 0 ? _wireStart.compId : null,
       ti1: i === 0 ? _wireStart.termIdx : null,
-      c2:  i === allPoints.length - 2 ? comp.id : null,
-      ti2: i === allPoints.length - 2 ? termIdx : null
+      c2:  (i === allPoints.length - 2 && destComp) ? destComp.id : null,
+      ti2: (i === allPoints.length - 2 && destComp) ? destIdx : null
     });
   }
 
+  _hideSnapIndicator();
   cancelWire();
   simResults = null;
   renderAll();
@@ -307,6 +312,7 @@ function _finishWireToPoint(x, y, comp, termIdx) {
 function setMode(m) {
   mode = m;
   cancelWire();
+  _hideSnapIndicator();
   selectedId = null;
   closePopup();
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
@@ -395,10 +401,7 @@ function renderComponent(c) {
   }
 
   // Terminales
-  if (c.type === 'node') {
-    // El nodo solo es visual — no tiene terminales clickeables
-    // Los cables se conectan a su centro por proximidad en el solver
-  } else {
+  if (c.type !== 'node') {
     getTerminals(c).forEach((pt, idx) => {
       const dot = svgEl('circle', {
         cx: pt.x - c.x, cy: pt.y - c.y,
@@ -524,7 +527,7 @@ function onTerminalClick(c, termIdx, pt) {
       'stroke-dasharray': '6 3', opacity: '0.8'
     });
     _wireLayer.appendChild(_tempWire);
-    setStatus('Clic en terminal destino o en canvas para agregar punto de quiebre.');
+    setStatus('Mueve el cursor hacia otro terminal o cable para conectar.');
     return;
   }
 
@@ -534,7 +537,7 @@ function onTerminalClick(c, termIdx, pt) {
     return;
   }
 
-  _finishWireToPoint(pt.x, pt.y, c, termIdx);
+  _commitWire(snapGrid(pt.x), snapGrid(pt.y));
 }
 
 function cancelWire() {
@@ -543,6 +546,7 @@ function cancelWire() {
   _tempLines = [];
   _wirePoints = [];
   _wireStart = null;
+  _hideSnapIndicator();
 }
 
 function clearCircuit() {
@@ -597,16 +601,16 @@ function _pointOnSegment(px, py, x1, y1, x2, y2) {
   return Math.abs(cx - px) < 6 && Math.abs(cy - py) < 6;
 }
 
-function _snapToNearestNode(x, y) {
-  for (const c of components) {
-    if (c.type !== 'node') continue;
-    const cx = c.x + c.w / 2;
-    const cy = c.y + c.h / 2;
-    if (Math.abs(x - cx) < 15 && Math.abs(y - cy) < 15) {
-      return { x: cx, y: cy };
-    }
-  }
-  return null;
+function _snapToWire(w, px, py) {
+  const dx = w.x2 - w.x1;
+  const dy = w.y2 - w.y1;
+  const len2 = dx * dx + dy * dy;
+  const t = ((px - w.x1) * dx + (py - w.y1) * dy) / len2;
+  const tc = Math.max(0.05, Math.min(0.95, t));
+  return {
+    x: snapGrid(w.x1 + tc * dx),
+    y: snapGrid(w.y1 + tc * dy)
+  };
 }
 
 function _splitWire(w, x, y) {
