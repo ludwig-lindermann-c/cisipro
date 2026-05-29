@@ -302,6 +302,28 @@ function _commitWire(x2, y2) {
   }
 
   _hideSnapIndicator();
+  // Si el cable termina sobre un cable existente, crear junction visible
+  const lastPt = allPoints[allPoints.length - 1];
+  const hitWire = _wireAtPoint(lastPt.x, lastPt.y);
+  if (hitWire) {
+    const exists = junctions.find(j =>
+      Math.abs(j.x - lastPt.x) < 4 && Math.abs(j.y - lastPt.y) < 4);
+    if (!exists) junctions.push({ id: nextId(), x: lastPt.x, y: lastPt.y });
+  }
+
+  // Si dos o más cables comparten un extremo, crear junction
+  for (const pt of allPoints) {
+    let count = 0;
+    for (const w of wires) {
+      if (Math.abs(w.x1 - pt.x) < 4 && Math.abs(w.y1 - pt.y) < 4) count++;
+      if (Math.abs(w.x2 - pt.x) < 4 && Math.abs(w.y2 - pt.y) < 4) count++;
+    }
+    if (count >= 3) {
+      const exists = junctions.find(j =>
+        Math.abs(j.x - pt.x) < 4 && Math.abs(j.y - pt.y) < 4);
+      if (!exists) junctions.push({ id: nextId(), x: pt.x, y: pt.y });
+    }
+  }
   cancelWire();
   simResults = null;
   renderAll();
@@ -465,7 +487,9 @@ function _voltageColor(v, vMax) {
 function renderJunction(j) {
   const dot = svgEl('circle', {
     cx: j.x, cy: j.y, r: 5,
-    fill: '#ccc', stroke: 'none'
+    fill: '#e8e8e2',
+    stroke: '#999',
+    'stroke-width': '1'
   });
   _wireLayer.appendChild(dot);
 }
