@@ -368,7 +368,7 @@ function renderComponent(c) {
 
   g.appendChild(buildSymbol(c));
 
-  if (c.type !== 'gnd' && c.type !== 'node') {
+  if (c.type !== 'gnd' && c.type !== 'node' && c.type !== 'vm' && c.type !== 'am') {
     const isH = isHorizontal(c);
     const isSource = c.type === 'vs' || c.type === 'cs';
     const lbl = svgEl('text', {
@@ -393,7 +393,7 @@ function renderComponent(c) {
 
   if (c.type !== 'gnd' && c.type !== 'node') {
     const isH = isHorizontal(c);
-    const isSource = c.type === 'vs' || c.type === 'cs';
+    const isSource = c.type === 'vs' || c.type === 'cs' || c.type === 'vm' || c.type === 'am';
     const nl = svgEl('text', {
       'text-anchor': 'middle',
       'font-size': '9',
@@ -457,21 +457,54 @@ function renderWire(w) {
     const vMax = simResults.vMax || 1;
     if (v !== undefined) color = _voltageColor(v, vMax);
   }
+  
+// Área de clic invisible más ancha
+  const hitLine = svgEl('line', {
+    x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2,
+    stroke: 'transparent', 'stroke-width': '12',
+    'stroke-linecap': 'round',
+    cursor: mode === 'delete' ? 'not-allowed' : 'default'
+  });
+
+  if (mode === 'delete') {
+    hitLine.addEventListener('mouseenter', () => {
+      line.setAttribute('stroke', '#E8593C');
+      line.setAttribute('stroke-width', '3.5');
+    });
+    hitLine.addEventListener('mouseleave', () => {
+      line.setAttribute('stroke', color);
+      line.setAttribute('stroke-width', '2.5');
+    });
+  }
+
+  hitLine.addEventListener('click', () => {
+    if (mode === 'delete') {
+      _saveHistory();
+      wires = wires.filter(x => x.id !== w.id);
+
+      // Limpiar junctions que ya no tienen cables conectados
+      junctions = junctions.filter(j => {
+        const connected = wires.some(wr =>
+          (Math.abs(wr.x1 - j.x) < 4 && Math.abs(wr.y1 - j.y) < 4) ||
+          (Math.abs(wr.x2 - j.x) < 4 && Math.abs(wr.y2 - j.y) < 4)
+        );
+        return connected;
+      });
+
+      simResults = null;
+      renderAll();
+      setStatus('Cable eliminado.');
+    }
+  });
+  _wireLayer.appendChild(hitLine);
+
   const line = svgEl('line', {
     x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2,
     stroke: color, 'stroke-width': '2.5',
     'stroke-linecap': 'round',
     cursor: mode === 'delete' ? 'not-allowed' : 'default'
   });
-  line.addEventListener('click', () => {
-    if (mode === 'delete') {
-      _saveHistory();
-      wires = wires.filter(x => x.id !== w.id);
-      simResults = null;
-      renderAll();
-      setStatus('Cable eliminado.');
-    }
-  });
+
   _wireLayer.appendChild(line);
 }
 

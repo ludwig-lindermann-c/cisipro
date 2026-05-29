@@ -260,17 +260,19 @@ function bindUI() {
     }
 
     if (e.key === 'Delete') {
-      if (selectedId === null) return;
-      const c = findComp(selectedId);
-      if (c) {
-        _saveHistory();
-        const name = c.name;
-        components = components.filter(x => x.id !== c.id);
-        wires      = wires.filter(w => w.c1 !== c.id && w.c2 !== c.id);
-        simResults = null;
-        selectedId = null;
-        renderAll();
-        setStatus(`${name} eliminado.`);
+      // Borrar componente seleccionado
+      if (selectedId !== null) {
+        const c = findComp(selectedId);
+        if (c) {
+          _saveHistory();
+          const name = c.name;
+          components = components.filter(x => x.id !== c.id);
+          wires      = wires.filter(w => w.c1 !== c.id && w.c2 !== c.id);
+          simResults = null;
+          selectedId = null;
+          renderAll();
+          setStatus(`${name} eliminado.`);
+        }
       }
     }
 

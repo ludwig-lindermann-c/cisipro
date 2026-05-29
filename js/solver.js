@@ -213,8 +213,8 @@ function _mna() {
 
   // Estampar fuentes de voltaje y amperímetros (0V)
   allVSources.forEach((c, k) => {
-    const nPlus  = nodeOf(c.id, 0);
-    const nMinus = nodeOf(c.id, 1);
+    const nPlus  = nodeOf(c.id, 1);
+    const nMinus = nodeOf(c.id, 0);
     const row = N + k;
     if (nPlus  > 0) { A[row][nPlus-1]  =  1; A[nPlus-1][row]  =  1; }
     if (nMinus > 0) { A[row][nMinus-1] = -1; A[nMinus-1][row] = -1; }
@@ -248,7 +248,7 @@ function _mna() {
 
     } else if (c.type === 'vs') {
       const idx = allVSources.indexOf(c);
-      const ic  = -(x[N + idx] ?? 0);
+      const ic  = (x[N + idx] ?? 0);
       compData[c.id] = { v: c.value, i: ic, p: c.value * ic };
 
     } else if (c.type === 'cs') {
