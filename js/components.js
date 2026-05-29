@@ -56,16 +56,11 @@ function getTerminals(c) {
 
   if (c.type === 'vm') {
     switch (c.rot) {
-      case 0:   // + izquierda, − derecha
-        return [{ x: c.x, y: cy }, { x: c.x + c.w, y: cy }];
-      case 90:  // + arriba, − abajo
-        return [{ x: cx, y: c.y }, { x: cx, y: c.y + c.h }];
-      case 180: // + derecha, − izquierda
-        return [{ x: c.x + c.w, y: cy }, { x: c.x, y: cy }];
-      case 270: // + abajo, − arriba
-        return [{ x: cx, y: c.y + c.h }, { x: cx, y: c.y }];
-      default:
-        return [{ x: c.x, y: cy }, { x: c.x + c.w, y: cy }];
+      case 0:   return [{ x: c.x, y: cy },        { x: c.x + c.w, y: cy }];
+      case 90:  return [{ x: cx, y: c.y },         { x: cx, y: c.y + c.h }];
+      case 180: return [{ x: c.x + c.w, y: cy },  { x: c.x, y: cy }];
+      case 270: return [{ x: cx, y: c.y + c.h },  { x: cx, y: c.y }];
+      default:  return [{ x: c.x, y: cy },         { x: c.x + c.w, y: cy }];
     }
   }
 
@@ -147,76 +142,110 @@ function buildSymbol(c) {
   const cx = c.w / 2;
   const cy = c.h / 2;
 
-  // Nodo
   if (c.type === 'node') {
     g.appendChild(svgEl('circle', { cx, cy, r: '6', fill: '#cccccc', stroke: 'none' }));
     return g;
   }
 
-  // GND — sin rotación
   if (c.type === 'gnd') {
     _drawSymbol(g, c.type, c.w, c.h);
     return g;
   }
 
-  // Amperímetro — rotación propia
-  if (c.type === 'am') {
-    const sym  = svgEl('g', {});
-    const isH  = isHorizontal(c);
+  // Fuente de voltaje — símbolo base + signos según orientación
+  if (c.type === 'vs') {
+    const isH   = isHorizontal(c);
     const drawW = isH ? c.w : c.h;
     const drawH = isH ? c.h : c.w;
-    const dcx  = drawW / 2;
-    const dcy  = drawH / 2;
+    const sym   = svgEl('g', {});
 
-    _drawSymbol(sym, 'am', drawW, drawH);
+    _drawVsBase(sym, drawW, drawH);
 
-    if (c.rot === 0) {
-      // sin transformación
-    } else if (c.rot === 90) {
+    if (c.rot === 90) {
       sym.setAttribute('transform',
-        `translate(${cx},${cy}) rotate(90) translate(${-dcx},${-dcy})`);
+        `translate(${cx},${cy}) rotate(90) translate(${-drawW/2},${-drawH/2})`);
     } else if (c.rot === 180) {
       sym.setAttribute('transform',
         `translate(${cx},${cy}) scale(-1,1) translate(${-cx},${-cy})`);
     } else if (c.rot === 270) {
       sym.setAttribute('transform',
-        `translate(${cx},${cy}) rotate(270) translate(${-dcx},${-dcy})`);
+        `translate(${cx},${cy}) rotate(270) translate(${-drawW/2},${-drawH/2})`);
     }
     g.appendChild(sym);
     return g;
   }
 
-  // Voltímetro — rotación propia
-  if (c.type === 'vm') {
-    const sym  = svgEl('g', {});
-    const isH  = isHorizontal(c);
+  // Amperímetro
+  if (c.type === 'am') {
+    const isH   = isHorizontal(c);
     const drawW = isH ? c.w : c.h;
     const drawH = isH ? c.h : c.w;
-    const dcx  = drawW / 2;
-    const dcy  = drawH / 2;
-
-    _drawSymbol(sym, 'vm', drawW, drawH);
-
-    if (c.rot === 0) {
-    } else if (c.rot === 90) {
+    const sym   = svgEl('g', {});
+    _drawAmBase(sym, drawW, drawH);
+    if (c.rot === 90) {
       sym.setAttribute('transform',
-        `translate(${cx},${cy}) rotate(90) translate(${-dcx},${-dcy})`);
+        `translate(${cx},${cy}) rotate(90) translate(${-drawW/2},${-drawH/2})`);
     } else if (c.rot === 180) {
       sym.setAttribute('transform',
         `translate(${cx},${cy}) scale(-1,1) translate(${-cx},${-cy})`);
     } else if (c.rot === 270) {
       sym.setAttribute('transform',
-        `translate(${cx},${cy}) rotate(270) translate(${-dcx},${-dcy})`);
+        `translate(${cx},${cy}) rotate(270) translate(${-drawW/2},${-drawH/2})`);
     }
     g.appendChild(sym);
+
+    // Signos fuera de la rotación
+    const terms  = getTerminals(c);
+    const tPlus  = { x: terms[0].x - c.x, y: terms[0].y - c.y };
+    const tMinus = { x: terms[1].x - c.x, y: terms[1].y - c.y };
+    if (isH) {
+      _text(g, '+', tPlus.x  + (c.rot === 0 ? 10 : -10), cy - 12, '#E8593C', 10, '700');
+      _text(g, '−', tMinus.x + (c.rot === 0 ? -10 : 10), cy - 12, '#3B8BD4', 10, '700');
+    } else {
+      _text(g, '+', cx + 14, tPlus.y  + (c.rot === 90 ? 10 : -10), '#E8593C', 10, '700');
+      _text(g, '−', cx + 14, tMinus.y + (c.rot === 90 ? -10 : 10), '#3B8BD4', 10, '700');
+    }
+    return g;
+  }
+
+  // Voltímetro
+  if (c.type === 'vm') {
+    const isH   = isHorizontal(c);
+    const drawW = isH ? c.w : c.h;
+    const drawH = isH ? c.h : c.w;
+    const sym   = svgEl('g', {});
+    _drawVmBase(sym, drawW, drawH);
+    if (c.rot === 90) {
+      sym.setAttribute('transform',
+        `translate(${cx},${cy}) rotate(90) translate(${-drawW/2},${-drawH/2})`);
+    } else if (c.rot === 180) {
+      sym.setAttribute('transform',
+        `translate(${cx},${cy}) scale(-1,1) translate(${-cx},${-cy})`);
+    } else if (c.rot === 270) {
+      sym.setAttribute('transform',
+        `translate(${cx},${cy}) rotate(270) translate(${-drawW/2},${-drawH/2})`);
+    }
+    g.appendChild(sym);
+
+    // Signos fuera de la rotación
+    const terms  = getTerminals(c);
+    const tPlus  = { x: terms[0].x - c.x, y: terms[0].y - c.y };
+    const tMinus = { x: terms[1].x - c.x, y: terms[1].y - c.y };
+    if (isH) {
+      _text(g, '+', tPlus.x  + (c.rot === 0 ? 10 : -10), cy - 12, '#E8593C', 10, '700');
+      _text(g, '−', tMinus.x + (c.rot === 0 ? -10 : 10), cy - 12, '#3B8BD4', 10, '700');
+    } else {
+      _text(g, '+', cx + 14, tPlus.y  + (c.rot === 90 ? 10 : -10), '#E8593C', 10, '700');
+      _text(g, '−', cx + 14, tMinus.y + (c.rot === 90 ? -10 : 10), '#3B8BD4', 10, '700');
+    }
     return g;
   }
 
   // Resto de componentes
-  const isH  = isHorizontal(c);
+  const isH   = isHorizontal(c);
   const drawW = isH ? c.w : c.h;
   const drawH = isH ? c.h : c.w;
-  const sym  = svgEl('g', {});
+  const sym   = svgEl('g', {});
   _drawSymbol(sym, c.type, drawW, drawH);
   if (c.rot === 90) {
     sym.setAttribute('transform',
@@ -232,6 +261,58 @@ function buildSymbol(c) {
   return g;
 }
 
+// ─── Símbolo base fuente de voltaje (sin signos) ───
+function _drawVsBase(g, w, h) {
+  const hw  = w / 2;
+  const hh  = h / 2;
+  const col = compColor('vs');
+  _line(g, 0,       hh, hw - 20, hh, col);
+  _circle(g, hw, hh, 20, col);
+  _line(g, hw + 20, hh, w, hh, col);
+  // Signos fijos: − izquierda, + derecha (siempre en base horizontal)
+  _line(g, hw - 9, hh - 7, hw - 9, hh + 7, '#3B8BD4', 2.5);
+  _line(g, hw + 4,  hh - 7, hw + 4, hh + 7, '#E8593C', 2.5);
+  _line(g, hw - 3,  hh,     hw + 11, hh,    '#E8593C', 2.5);
+}
+
+// ─── Símbolo base amperímetro (sin signos) ───
+function _drawAmBase(g, w, h) {
+  const hw = w / 2;
+  const hh = h / 2;
+  const r  = Math.min(hw, hh) - 4;
+  _line(g, 0,      hh, hw - r, hh, '#E67E22');
+  _line(g, hw + r, hh, w,      hh, '#E67E22');
+  _circle(g, hw, hh, r, '#E67E22');
+  const ta = svgEl('text', {
+    x: hw, y: hh - 4,
+    'text-anchor': 'middle', 'dominant-baseline': 'central',
+    'font-size': '12', 'font-weight': '700',
+    'font-family': 'Segoe UI, sans-serif', fill: '#E67E22'
+  });
+  ta.textContent = 'A';
+  g.appendChild(ta);
+  _line(g, hw - 6, hh + 7, hw + 4, hh + 7, '#E67E22', 1.5);
+  _arrow(g, hw + 4, hh + 7, '#E67E22');
+}
+
+// ─── Símbolo base voltímetro (sin signos) ───
+function _drawVmBase(g, w, h) {
+  const hw = w / 2;
+  const hh = h / 2;
+  const r  = Math.min(hw, hh) - 4;
+  _line(g, 0,      hh, hw - r, hh, '#9B59B6');
+  _line(g, hw + r, hh, w,      hh, '#9B59B6');
+  _circle(g, hw, hh, r, '#9B59B6');
+  const tv = svgEl('text', {
+    x: hw, y: hh,
+    'text-anchor': 'middle', 'dominant-baseline': 'central',
+    'font-size': '14', 'font-weight': '700',
+    'font-family': 'Segoe UI, sans-serif', fill: '#9B59B6'
+  });
+  tv.textContent = 'V';
+  g.appendChild(tv);
+}
+
 // ─── Dibujar símbolo base ───
 function _drawSymbol(g, type, w, h) {
   const hw  = w / 2;
@@ -243,14 +324,6 @@ function _drawSymbol(g, type, w, h) {
     _rect(g, hw - 16, hh - 9, 32, 18, col);
     _line(g, hw + 16, hh, w,       hh, col);
 
-  } else if (type === 'vs') {
-    _line(g, 0,       hh, hw - 20, hh, col);
-    _circle(g, hw, hh, 20, col);
-    _line(g, hw - 15, hh,     hw - 7,  hh,     '#3B8BD4', 2.2);
-    _line(g, hw + 7,  hh - 6, hw + 7,  hh + 6, '#E8593C', 2.2);
-    _line(g, hw + 1,  hh,     hw + 13, hh,     '#E8593C', 2.2);
-    _line(g, hw + 20, hh, w,  hh, col);
-
   } else if (type === 'cs') {
     _line(g, 0,       hh, hw - 20, hh, col);
     _circle(g, hw, hh, 20, col);
@@ -259,48 +332,10 @@ function _drawSymbol(g, type, w, h) {
     _line(g, hw + 20, hh, w,       hh, col);
 
   } else if (type === 'gnd') {
-    _line(g, hw, 0,        hw, hh,        col);
-    _line(g, hw - 14, hh,  hw + 14, hh,  col, 2.2);
-    _line(g, hw - 9,  hh+5, hw + 9, hh+5, col, 1.6);
+    _line(g, hw, 0,        hw, hh,          col);
+    _line(g, hw - 14, hh,  hw + 14, hh,    col, 2.2);
+    _line(g, hw - 9,  hh+5, hw + 9, hh+5,  col, 1.6);
     _line(g, hw - 4,  hh+10, hw + 4, hh+10, col, 1.2);
-
-  } else if (type === 'vm') {
-    const r = Math.min(hw, hh) - 4;
-    _line(g, 0,      hh, hw - r, hh, '#9B59B6');
-    _line(g, hw + r, hh, w,      hh, '#9B59B6');
-    _circle(g, hw, hh, r, '#9B59B6');
-    const tv = svgEl('text', {
-      x: hw, y: hh,
-      'text-anchor': 'middle', 'dominant-baseline': 'central',
-      'font-size': '14', 'font-weight': '700',
-      'font-family': 'Segoe UI, sans-serif', fill: '#9B59B6'
-    });
-    tv.textContent = 'V';
-    g.appendChild(tv);
-    _text(g, '+', hw - r - 8, hh - 12, '#E8593C', 10, '700');
-    _text(g, '−', hw + r + 8, hh - 12, '#3B8BD4', 10, '700');
-  } else if (type === 'am') {
-    const r = Math.min(hw, hh) - 4;
-    // Líneas de conexión horizontales
-    _line(g, 0,      hh, hw - r, hh, '#E67E22');
-    _line(g, hw + r, hh, w,      hh, '#E67E22');
-    // Círculo
-    _circle(g, hw, hh, r, '#E67E22');
-    // Letra A
-    const ta = svgEl('text', {
-      x: hw, y: hh - 4,
-      'text-anchor': 'middle', 'dominant-baseline': 'central',
-      'font-size': '12', 'font-weight': '700',
-      'font-family': 'Segoe UI, sans-serif', fill: '#E67E22'
-    });
-    ta.textContent = 'A';
-    g.appendChild(ta);
-    // Flecha dentro del círculo apuntando a la derecha (hacia terminal −)
-    _line(g, hw - 6, hh + 7, hw + 4, hh + 7, '#E67E22', 1.5);
-    _arrow(g, hw + 4, hh + 7, '#E67E22');
-    // Signos cerca de los terminales
-    _text(g, '+', hw - r - 8, hh - 12, '#E8593C', 10, '700');
-    _text(g, '−', hw + r + 8, hh - 12, '#3B8BD4', 10, '700');
   }
 }
 
