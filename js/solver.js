@@ -40,7 +40,6 @@ function runSimulation() {
 
 // Función principal corregida
 function _mnaCorregido() {
-  console.log("=== INICIO DE _mnaCorregido ===");
   
   // ============================================
   // PASO 1: Crear un mapa de todas las posiciones (terminales y puntos de cable)
@@ -149,7 +148,6 @@ function _mnaCorregido() {
   }
   
   const nodeCount = nextNode - 1;
-  console.log(`Nodos encontrados: ${nodeCount + 1} (incluyendo tierra)`);
   
   // Función para obtener el nodo de un terminal
   function getNode(comp, termIdx) {
@@ -257,7 +255,6 @@ function _mnaCorregido() {
     V[i] = x[i-1] ?? 0;
   }
   
-  console.log("Voltajes de nodo:", V.slice(1).map((v, i) => `Nodo${i+1}=${v.toFixed(4)}V`));
   
   // ============================================
   // PASO 7: Calcular resultados por componente
@@ -302,12 +299,6 @@ function _mnaCorregido() {
       const nVminus = getNode(c, 3);  // V- (abajo)
       
       // Depuración
-      console.log(`Procesando ${c.name}:`);
-      console.log(`  I+ (term0): getNode=${nIplus}`);
-      console.log(`  I- (term1): getNode=${nIminus}`);
-      console.log(`  V+ (term2): getNode=${nVplus}`);
-      console.log(`  V- (term3): getNode=${nVminus}`);
-      console.log(`  Voltajes de nodo V:`, V);
       
       // Calcular voltaje entre V+ y V-
       const voltaje = V[nVplus] - V[nVminus];
@@ -327,7 +318,6 @@ function _mnaCorregido() {
       
       const potencia = voltaje * corriente;
       
-      console.log(`  Resultado: V=${voltaje.toFixed(4)}V, I=${corriente.toFixed(4)}A, P=${potencia.toFixed(4)}W`);
       
       compData[c.id] = { 
         v: voltaje, 
@@ -354,11 +344,9 @@ function _mnaCorregido() {
   }
   
   // Depuración: mostrar todos los wattímetros
-  console.log("=== WATTÍMETROS ===");
   for (const c of components) {
     if (c.type === 'wm') {
       const data = compData[c.id];
-      console.log(`${c.name}: V=${data?.v?.toFixed(4)}V, I=${data?.i?.toFixed(4)}A, P=${data?.p?.toFixed(4)}W`);
     }
   }
 
