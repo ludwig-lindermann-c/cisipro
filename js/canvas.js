@@ -390,7 +390,7 @@ function renderComponent(c) {
 
   g.appendChild(buildSymbol(c));
 
-  if (c.type !== 'gnd' && c.type !== 'node' && c.type !== 'vm' && c.type !== 'am' && c.type !== 'om' && c.type !== 'wm') {
+  if (c.type !== 'gnd' && c.type !== 'vm' && c.type !== 'am' && c.type !== 'om' && c.type !== 'wm') {
     const isH = isHorizontal(c);
     const isSource = c.type === 'vs' || c.type === 'cs';
     const lbl = svgEl('text', {
@@ -413,7 +413,7 @@ function renderComponent(c) {
     g.appendChild(lbl);
   }
 
-  if (c.type !== 'gnd' && c.type !== 'node') {
+  if (c.type !== 'gnd') {
     const isH = isHorizontal(c);
     const isSource = c.type === 'vs' || c.type === 'cs' || c.type === 'vm' || c.type === 'am' || c.type === 'om';
     const nl = svgEl('text', {
@@ -451,21 +451,19 @@ function renderComponent(c) {
   }
 
   // Terminales
-  if (c.type !== 'node') {
-    getTerminals(c).forEach((pt, idx) => {
-      const dot = svgEl('circle', {
-        cx: pt.x - c.x, cy: pt.y - c.y,
-        r: 4, fill: 'white',
-        stroke: compColor(c.type), 'stroke-width': '1.8',
-        cursor: 'crosshair'
-      });
-      dot.addEventListener('mousedown', e => {
-        e.stopPropagation();
-        onTerminalClick(c, idx, pt);
-      });
-      g.appendChild(dot);
+  getTerminals(c).forEach((pt, idx) => {
+    const dot = svgEl('circle', {
+      cx: pt.x - c.x, cy: pt.y - c.y,
+      r: 4, fill: 'white',
+      stroke: compColor(c.type), 'stroke-width': '1.8',
+      cursor: 'crosshair'
     });
-  }
+    dot.addEventListener('mousedown', e => {
+      e.stopPropagation();
+      onTerminalClick(c, idx, pt);
+    });
+    g.appendChild(dot);
+  });
 
   g.addEventListener('mousedown', e => {
     if (e.detail === 2) return;
@@ -562,11 +560,8 @@ function onCompMouseDown(e, c) {
   e.stopPropagation();
   selectedId = c.id;
   const pt = canvasPoint(e);
-  if (c.type === 'node') {
-    _drag = { comp: c, ox: c.w / 2, oy: c.h / 2, isNode: true };
-  } else {
-    _drag = { comp: c, ox: pt.x - c.x, oy: pt.y - c.y };
-  }
+  const gEl = e.currentTarget;
+  _drag = { comp: c, ox: pt.x - c.x, oy: pt.y - c.y, el: gEl };
   renderAll();
 }
 
@@ -584,7 +579,6 @@ function onCompClick(e, c) {
 
 function rotateComponent(c) {
   if (c.type === 'gnd')  { setStatus('La tierra no necesita rotación.'); return; }
-  if (c.type === 'node') { setStatus('El nodo no necesita rotación.'); return; }
   const centerX = c.x + c.w / 2;
   const centerY = c.y + c.h / 2;
   const wasH = isHorizontal(c);

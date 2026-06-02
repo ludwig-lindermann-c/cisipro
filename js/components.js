@@ -7,7 +7,6 @@ const COMPONENT_DEFAULTS = {
   cs:   { value: 2,    name: 'I',   w: 80, h: 40 },
   r:    { value: 1000, name: 'R',   w: 80, h: 40 },
   gnd:  { value: 0,    name: 'GND', w: 40, h: 40 },
-  node: { value: 0,    name: 'N',   w: 20, h: 20 },
   vm:   { value: 0,    name: 'VM',  w: 80, h: 40 },
   am:   { value: 0,    name: 'AM',  w: 80, h: 40 },
   om:   { value: 0,    name: 'OM',  w: 80, h: 40 },
@@ -44,14 +43,8 @@ function createComponent(type, x, y) {
   const w = Math.ceil(def.w / GRID) * GRID;
   const h = Math.ceil(def.h / GRID) * GRID;
   
-  let cx, cy;
-  if (type === 'node') {
-    cx = snapGrid(x) - GRID;
-    cy = snapGrid(y) - GRID;
-  } else {
-    cx = snapGrid(x - w / 2);
-    cy = snapGrid(y - h / 2);
-  }
+  const cx = snapGrid(x - w / 2);
+  const cy = snapGrid(y - h / 2);
   
   return {
     id: nextId(), type, name: nextName(type),
@@ -77,14 +70,6 @@ function getTerminals(c) {
   // GND: solo un terminal
   if (c.type === 'gnd') return [{ x: cx, y: c.y }];
   
-  // Nodo: 4 terminales
-  if (c.type === 'node') return [
-    { x: cx, y: c.y },           // arriba
-    { x: cx, y: c.y + c.h },     // abajo
-    { x: c.x, y: cy },           // izquierda
-    { x: c.x + c.w, y: cy }      // derecha
-  ];
-
     // Wattímetro: 4 terminales (I+, I-, V+, V-)
   // Este orden permite medir corriente en serie y voltaje en paralelo
   if (c.type === 'wm') {
@@ -178,7 +163,7 @@ function formatResult(v) {
 function compColor(type) {
   const colors = {
     vs: '#E8593C', cs: '#3B8BD4', r: '#666666',
-    gnd: '#3B6D11', node: '#cccccc',
+    gnd: '#3B6D11',
     vm: '#9B59B6', am: '#E67E22', om: '#27AE60',
     wm: '#F39C12'
   };
@@ -190,11 +175,6 @@ function buildSymbol(c) {
   const g  = svgEl('g', {});
   const cx = c.w / 2;
   const cy = c.h / 2;
-
-  if (c.type === 'node') {
-    g.appendChild(svgEl('circle', { cx, cy, r: '6', fill: '#cccccc', stroke: 'none' }));
-    return g;
-  }
 
   if (c.type === 'gnd') {
     _drawSymbol(g, c.type, c.w, c.h);
