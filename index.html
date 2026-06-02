@@ -6,6 +6,8 @@
   <title>CiSIPro — Circuit Simulator</title>
   <link rel="stylesheet" href="css/styles.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
+  <!-- Librería math.js para optimización del solver -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
 </head>
 <body>
 
@@ -78,7 +80,7 @@
             <span>I fuente</span>
           </div>
         </div>
-
+        
         <div class="tool-section">
           <h3 class="tool-heading">Pasivos</h3>
           <div class="tool-btn" draggable="true" data-type="r" title="Resistencia">
@@ -86,7 +88,6 @@
             <span>Resistor</span>
           </div>
         </div>
-
         <div class="tool-section">
           <h3 class="tool-heading">Utilidades</h3>
           <div class="tool-btn" draggable="true" data-type="gnd" title="Referencia tierra">
@@ -108,6 +109,14 @@
           <div class="tool-btn" draggable="true" data-type="am" title="Amperímetro">
             <svg viewBox="0 0 28 22"><circle cx="14" cy="11" r="9" fill="none" stroke="#E67E22" stroke-width="1.8"/><text x="14" y="12" text-anchor="middle" dominant-baseline="central" font-size="10" font-weight="700" fill="#E67E22" font-family="sans-serif">A</text></svg>
             <span>Amperímetro</span>
+          </div>
+          <div class="tool-btn" draggable="true" data-type="om" title="Óhmetro">
+            <svg viewBox="0 0 28 22"><circle cx="14" cy="11" r="9" fill="none" stroke="#27AE60" stroke-width="1.8"/><text x="14" y="12" text-anchor="middle" dominant-baseline="central" font-size="10" font-weight="700" fill="#27AE60" font-family="sans-serif">Ω</text></svg>
+            <span>Óhmetro</span>
+          </div>
+          <div class="tool-btn" draggable="true" data-type="wm" title="Wattímetro">
+            <svg viewBox="0 0 28 22"><circle cx="14" cy="11" r="9" fill="none" stroke="#F39C12" stroke-width="1.8"/><text x="14" y="12" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="700" fill="#F39C12" font-family="sans-serif">W</text></svg>
+            <span>Wattímetro</span>
           </div>
         </div>
       </aside>

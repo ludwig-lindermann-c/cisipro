@@ -6,16 +6,25 @@ function showPopup(c, px, py) {
   _popupId = c.id;
   selectedId = c.id;
 
-  const typeNames = { vs: 'Fuente de Voltaje', cs: 'Fuente de Corriente', r: 'Resistencia' };
-  const typeUnits = { vs: 'Voltaje (V)', cs: 'Corriente (A)', r: 'Resistencia (Ω)' };
+  const typeNames = { 
+    vs: 'Fuente de Voltaje', 
+    cs: 'Fuente de Corriente', 
+    r: 'Resistencia'
+  };
+  
+  const typeUnits = { 
+    vs: 'Voltaje (V)', 
+    cs: 'Corriente (A)', 
+    r: 'Resistencia (Ω)'
+  };
 
-  document.getElementById('popup-title').textContent = typeNames[c.type] + ' — ' + c.name;
-  document.getElementById('popup-lbl').textContent   = typeUnits[c.type];
+  document.getElementById('popup-title').textContent = (typeNames[c.type] || 'Componente') + ' — ' + c.name;
+  document.getElementById('popup-lbl').textContent   = typeUnits[c.type] || 'Valor';
 
   const { base, prefix } = splitValuePrefix(c.value);
   document.getElementById('popup-val').value    = base;
   document.getElementById('popup-prefix').value = prefix;
-
+  
   const popup = document.getElementById('edit-popup');
   const wrap  = document.getElementById('canvas-wrap');
   const wr    = wrap.getBoundingClientRect();
@@ -66,6 +75,10 @@ function applyPopup() {
   if ((c.type === 'vs' || c.type === 'cs') && newVal === 0) { setStatus('⚠ El valor no puede ser 0.'); return; }
 
   c.value = newVal;
+  
+  // <<<--- AGREGAR ESTA LÍNEA PARA DEPURACIÓN --->>>
+  console.log(`Componente ${c.name} actualizado: valor = ${c.value} (base=${base}, prefix=${prefix})`);
+  
   simResults = null;
   closePopup();
   renderAll();
@@ -95,7 +108,7 @@ function renderResults() {
     return;
   }
 
-  const instruments = components.filter(c => c.type === 'vm' || c.type === 'am');
+    const instruments = components.filter(c => c.type === 'vm' || c.type === 'am' || c.type === 'om' || c.type === 'wm');
 
   if (instruments.length === 0) {
     div.innerHTML = '<p class="hint">Agrega voltímetros o amperímetros para ver mediciones.</p>';
@@ -144,6 +157,46 @@ function renderResults() {
             <option value="1e-3">mA</option>
             <option value="1e-6">μA</option>
             <option value="1e-9">nA</option>
+          </select>
+        </div>
+      </div>`;
+    }
+
+    if (c.type === 'om') {
+      const raw = r.r;
+      const display = raw === Infinity ? '∞ (circuito abierto)' : _fmtSig(raw, 1) + ' Ω';
+      html += `<div class="res-comp">
+        <div class="res-comp-name">${c.name} <span style="font-size:9px;font-weight:400;color:#27AE60">Óhmetro</span></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+          <span style="font-family:monospace;font-size:12px;min-width:90px;color:#27AE60"
+            id="disp-${c.id}">${display}</span>
+          ${raw !== Infinity ? `
+          <select id="prefix-${c.id}" onchange="updateDisplayOhm('${c.id}',${raw},this.value)"
+            style="${selectStyle}">
+            <option value="1e9">GΩ</option>
+            <option value="1e6">MΩ</option>
+            <option value="1e3">kΩ</option>
+            <option value="1" selected>Ω</option>
+            <option value="1e-3">mΩ</option>
+          </select>` : ''}
+        </div>
+      </div>`;
+    }
+            if (c.type === 'wm') {
+      const raw = r.p;
+      html += `<div class="res-comp">
+        <div class="res-comp-name">${c.name} <span style="font-size:9px;font-weight:400;color:#F39C12">Wattímetro</span></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+          <span class="val-p" id="disp-${c.id}" style="font-family:monospace;font-size:12px;min-width:90px">${_fmtSig(raw, 1)} W</span>
+          <select id="prefix-${c.id}" onchange="updateDisplay('${c.id}',${raw},'W',this.value)"
+            style="${selectStyle}">
+            <option value="1e12">TW</option>
+            <option value="1e9">GW</option>
+            <option value="1e6">MW</option>
+            <option value="1e3">kW</option>
+            <option value="1" selected>W</option>
+            <option value="1e-3">mW</option>
+            <option value="1e-6">μW</option>
           </select>
         </div>
       </div>`;
@@ -198,13 +251,27 @@ function updateDisplay(id, rawValue, unit, prefixStr) {
   if (el) el.textContent = `${parseFloat(converted.toPrecision(5))} ${label}${unit}`;
 }
 
+function updateDisplayOhm(id, rawValue, prefixStr) {
+  const prefix = parseFloat(prefixStr);
+  const prefixLabels = {
+    '1e9': 'G', '1e6': 'M', '1e3': 'k',
+    '1': '', '1e-3': 'm'
+  };
+  const label     = prefixLabels[prefixStr] || '';
+  const converted = rawValue / prefix;
+  const display   = parseFloat(converted.toPrecision(4)).toString();
+  const el = document.getElementById('disp-' + id);
+  if (el) el.textContent = `${display} ${label}Ω`;
+}
+
 function clearResults() {
   document.getElementById('results').innerHTML =
     '<p class="hint">Coloca componentes, conéctalos y presiona <strong>Simular</strong>.</p>';
 }
 
 function setStatus(msg) {
-  document.getElementById('status').textContent = msg;
+  const statusDiv = document.getElementById('status');
+  if (statusDiv) statusDiv.textContent = msg;
 }
 
 // ─── Vincular botones ───
@@ -214,6 +281,7 @@ function bindUI() {
   document.getElementById('btn-delete').addEventListener('click', () => setMode('delete'));
 
   document.getElementById('btn-simulate').addEventListener('click', () => {
+    renderAll();
     const ok = runSimulation();
     if (ok) {
       renderAll();
@@ -268,7 +336,7 @@ function bindUI() {
   document.getElementById('btn-clear').addEventListener('click', () => {
     if (components.length === 0 && wires.length === 0) return;
     if (confirm('¿Limpiar todo el circuito?')) {
-      _saveHistory();
+      _saveHistory();           // Guardar el estado ANTES de limpiar
       document.getElementById('btn-stop').style.display = 'none';
       document.getElementById('btn-simulate').style.display = '';
       clearCircuit();
@@ -308,6 +376,12 @@ function bindUI() {
     if (e.key === 'Escape') {
       filenameInput.style.display   = 'none';
       filenameDisplay.style.display = '';
+    }
+  });
+  // Asegurar que todos los tool-btn sean draggable
+  document.querySelectorAll('.tool-btn').forEach(btn => {
+    if (btn.dataset.type) {
+      btn.setAttribute('draggable', 'true');
     }
   });
   document.querySelectorAll('.tool-btn[draggable]').forEach(btn => {
@@ -378,6 +452,12 @@ function bindUI() {
         const maxId = [...components, ...wires, ...junctions]
           .reduce((m, x) => Math.max(m, x.id || 0), 0);
         _idCounter = maxId;
+                // Reiniciar contador de nombres por tipo
+        for (let key in _typeCount) delete _typeCount[key];
+        components.forEach(c => {
+          const type = c.type;
+          _typeCount[type] = (_typeCount[type] || 0) + 1;
+        });
 
         // Mostrar nombre del archivo sin extensión
         const nameWithoutExt = file.name.replace(/\.json$/i, '');
@@ -425,11 +505,34 @@ function bindUI() {
       }
     }
 
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
       e.preventDefault();
       document.getElementById('btn-stop').style.display = 'none';
       document.getElementById('btn-simulate').style.display = '';
       undoLast();
     }
   });
-}
+
+  // ─── Contador de componentes en el panel de estado ───
+  function updateComponentCount() {
+    const count = components.length;
+    const statusDiv = document.getElementById('status');
+    if (statusDiv && !statusDiv.textContent.includes('⚠') && !statusDiv.textContent.includes('✓')) {
+      if (count === 0) {
+        statusDiv.textContent = 'Circuito vacío. Arrastra componentes para comenzar.';
+      } else {
+        statusDiv.textContent = `${count} componente${count !== 1 ? 's' : ''} en el circuito.`;
+      }
+    }
+  }
+  
+  // Actualizar cada vez que se renderiza
+  const originalRenderAll = window.renderAll;
+  window.renderAll = function() {
+    if (originalRenderAll) originalRenderAll();
+    updateComponentCount();
+  };
+  
+  // Inicializar contador
+  updateComponentCount();
+}  // <--- Esta es la llave de cierre de bindUI

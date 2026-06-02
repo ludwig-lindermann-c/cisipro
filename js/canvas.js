@@ -54,16 +54,13 @@ function undoLast() {
 // ─── Inicializar canvas ───
 function initCanvas() {
   _canvas = document.getElementById('canvas');
-
-  // Grupo principal que recibe zoom y paneo
   _mainGroup = svgEl('g', { id: 'main-group' });
   _wireLayer = svgEl('g', { id: 'wire-layer' });
   _compLayer = svgEl('g', { id: 'comp-layer' });
   _mainGroup.appendChild(_wireLayer);
   _mainGroup.appendChild(_compLayer);
   _canvas.appendChild(_mainGroup);
-
-  drawGrid();
+  drawGrid();        // <--- ESTA LÍNEA DEBE EXISTIR
   bindCanvasEvents();
   bindZoomPan();
   window.addEventListener('resize', drawGrid);
@@ -85,18 +82,19 @@ function drawGrid() {
 
 // ─── Detección de punto de snap ───
 // Retorna {x, y, type} donde type = 'terminal' | 'wire-end' | 'wire-mid' | null
-function _detectSnapPoint(px, py) {
-  const SNAP_R = GRID; // radio de detección = 1 celda de grilla
 
-  // 1. Terminal de componente
+function _detectSnapPoint(px, py) {
+  const SNAP_R = GRID;
+  
+  // 1. Terminal de componente (prioridad alta)
   for (const c of components) {
     for (const t of getTerminals(c)) {
       if (Math.abs(t.x - px) < SNAP_R && Math.abs(t.y - py) < SNAP_R) {
-        return { x: t.x, y: t.y, type: 'terminal' };
+        return { x: t.x, y: t.y, type: 'terminal', comp: c };
       }
     }
   }
-
+  
   // 2. Extremo de cable existente
   for (const w of wires) {
     if (Math.abs(w.x1 - px) < SNAP_R && Math.abs(w.y1 - py) < SNAP_R)
@@ -104,13 +102,13 @@ function _detectSnapPoint(px, py) {
     if (Math.abs(w.x2 - px) < SNAP_R && Math.abs(w.y2 - py) < SNAP_R)
       return { x: w.x2, y: w.y2, type: 'wire-end' };
   }
-
-  // 3. Punto intermedio de cable (sobre el segmento, en la grilla)
+  
+  // 3. Punto intermedio de cable
   for (const w of wires) {
     const snapped = _nearestGridPointOnSegment(px, py, w);
     if (snapped) return { x: snapped.x, y: snapped.y, type: 'wire-mid', wire: w };
   }
-
+  
   return null;
 }
 
@@ -264,8 +262,8 @@ function bindCanvasEvents() {
 
   _canvas.addEventListener('mouseup', () => { _drag = null; });
 
-  _canvas.addEventListener('dblclick', e => {
-    if (simResults) return; // bloquear durante simulación
+      _canvas.addEventListener('dblclick', e => {
+    if (simResults) return;
     const gEl = e.target.closest('[data-cid]');
     if (!gEl) return;
     e.stopPropagation();
@@ -280,10 +278,13 @@ function canvasPoint(e) {
   const r = _canvas.getBoundingClientRect();
   const mx = e.clientX - r.left;
   const my = e.clientY - r.top;
-  return {
-    x: (mx - _panX) / _zoom,
-    y: (my - _panY) / _zoom
-  };
+  let x = (mx - _panX) / _zoom;
+  let y = (my - _panY) / _zoom;
+  if (isNaN(x) || isNaN(y)) {
+    x = 0;
+    y = 0;
+  }
+  return { x, y };
 }
 
 // ─── Confirmar cable ───
@@ -389,7 +390,7 @@ function renderComponent(c) {
 
   g.appendChild(buildSymbol(c));
 
-  if (c.type !== 'gnd' && c.type !== 'node' && c.type !== 'vm' && c.type !== 'am') {
+  if (c.type !== 'gnd' && c.type !== 'node' && c.type !== 'vm' && c.type !== 'am' && c.type !== 'om' && c.type !== 'wm') {
     const isH = isHorizontal(c);
     const isSource = c.type === 'vs' || c.type === 'cs';
     const lbl = svgEl('text', {
@@ -414,7 +415,7 @@ function renderComponent(c) {
 
   if (c.type !== 'gnd' && c.type !== 'node') {
     const isH = isHorizontal(c);
-    const isSource = c.type === 'vs' || c.type === 'cs' || c.type === 'vm' || c.type === 'am';
+    const isSource = c.type === 'vs' || c.type === 'cs' || c.type === 'vm' || c.type === 'am' || c.type === 'om';
     const nl = svgEl('text', {
       'text-anchor': 'middle',
       'font-size': '9',
@@ -422,14 +423,20 @@ function renderComponent(c) {
       'font-style': 'italic'
     });
     nl.textContent = c.name;
-    const offset = isSource ? 32 : 26;
-    if (isH) {
-      nl.setAttribute('x', c.w / 2);
-      nl.setAttribute('y', c.h / 2 + offset);
+    if (c.type === 'wm') {
+      nl.setAttribute('text-anchor', 'start');
+      nl.setAttribute('x', '3');
+      nl.setAttribute('y', String(c.h - 2));
     } else {
-      nl.setAttribute('x', c.w / 2 - offset);
-      nl.setAttribute('y', c.h / 2);
-      nl.setAttribute('dominant-baseline', 'central');
+      const offset = isSource ? 32 : 26;
+      if (isH) {
+        nl.setAttribute('x', c.w / 2);
+        nl.setAttribute('y', c.h / 2 + offset);
+      } else {
+        nl.setAttribute('x', c.w / 2 - offset);
+        nl.setAttribute('y', c.h / 2);
+        nl.setAttribute('dominant-baseline', 'central');
+      }
     }
     g.appendChild(nl);
   }
@@ -551,7 +558,7 @@ function renderJunction(j) {
 // ─── Eventos de componente ───
 function onCompMouseDown(e, c) {
   if (mode !== 'select') return;
-  if (simResults) return; // bloquear durante simulación
+  if (simResults) return;
   e.stopPropagation();
   selectedId = c.id;
   const pt = canvasPoint(e);
@@ -564,7 +571,7 @@ function onCompMouseDown(e, c) {
 }
 
 function onCompClick(e, c) {
-  if (simResults) return; // bloquear durante simulación
+  if (simResults) return;
   if (mode === 'delete') {
     e.stopPropagation();
     _saveHistory();
@@ -635,6 +642,7 @@ function clearCircuit() {
   selectedId = null;
   _drag      = null;
   cancelWire();
+  resetCounters(); 
   renderAll();
   clearResults();
   setStatus('');
